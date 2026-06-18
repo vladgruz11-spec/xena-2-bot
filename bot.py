@@ -22,7 +22,7 @@ YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "Xena20Bot")
 
 SUPPORT_URL = "https://t.me/Vlad101ss"
-DB_PATH = os.getenv("DB_PATH", "/var/data/users.db")
+DB_PATH = "users.db"
 MEDIA_DIR = Path("media")
 MEDIA_DIR.mkdir(exist_ok=True)
 
