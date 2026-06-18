@@ -3,14 +3,14 @@ import json
 import time
 import sqlite3
 import requests
-import asyncio
 from pathlib import Path
 
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, LabeledPrice, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    PreCheckoutQueryHandler,
     CallbackQueryHandler,
     ContextTypes,
     filters,
@@ -18,116 +18,99 @@ from telegram.ext import (
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 KIE_API_KEY = os.getenv("KIE_API_KEY")
+
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
-BOT_USERNAME = os.getenv("BOT_USERNAME", "Xena20Bot")
-
-SUPPORT_URL = "https://t.me/Vlad101ss"
-DB_PATH = "users.db"
-MEDIA_DIR = Path("media")
-MEDIA_DIR.mkdir(exist_ok=True)
-
-ADMIN_IDS = {6164104276}
-ASPECT_RATIO = "9:16"
-RESOLUTION = "480p"
-IMAGE_PRICE = 50
-VIDEO_PRICES = {"5": 100, "10": 180, "15": 250}
-TOPUP_AMOUNTS = [500, 1000, 1500]
-
-GROK_VIDEO_MODEL = "grok-imagine-video-1-5-preview"
-TEXT_TO_IMAGE_MODEL = os.getenv("KIE_TEXT_TO_IMAGE_MODEL", "gpt-4o-image")
-
-user_states = {}
 
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN не найден!")
+
 if not KIE_API_KEY:
     raise RuntimeError("KIE_API_KEY не найден!")
+
 if not YOOKASSA_SHOP_ID:
     raise RuntimeError("YOOKASSA_SHOP_ID не найден!")
+
 if not YOOKASSA_SECRET_KEY:
     raise RuntimeError("YOOKASSA_SECRET_KEY не найден!")
 
+MEDIA_DIR = Path("media")
+MEDIA_DIR.mkdir(exist_ok=True)
 
-def main_inline_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎬 СОЗДАТЬ ВИДЕО", callback_data="video_menu")],
-        [InlineKeyboardButton("💳 Пополнить баланс", callback_data="buy")],
-        [InlineKeyboardButton("👤 Мой баланс", callback_data="profile")],
-        [InlineKeyboardButton("📘 Инструкция", callback_data="help")],
-        [InlineKeyboardButton("🆘 Связаться с поддержкой", url=SUPPORT_URL)],
-    ])
+DB_PATH = "/var/data/users.db"
+user_states = {}
 
+ADMIN_IDS = {
+    6164104276
+}
+VIDEO_PRICES = {
+    "5": 98,
+    "10": 147,
+}
+def paid_menu():
+    keyboard = [
+        ["💳 Пополнить баланс: /buy"],
+        ["🎁 БЕСПЛАТНЫЕ генерации: /ref"],
+        ["🚀 Запустить бота"],
+        ["📘 Инструкция: /help"],
+        ["👤 Мой баланс: /profile"],
+        ["🆘 Связаться с поддержкой"]
+    ]
 
-def video_mode_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📸 Фото → Видео", callback_data="mode_image_to_video")],
-        [InlineKeyboardButton("📝 Текст → Видео", callback_data="mode_text_to_video")],
-        [InlineKeyboardButton("🖼 Текст → Картинка", callback_data="mode_text_to_image")],
-        [InlineKeyboardButton("⬅️ НАЗАД", callback_data="main_menu")],
-    ])
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True
+    )
+def duration_menu():
+    keyboard = [
+        ["5 секунд", "10 секунд"]
+    ]
 
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True
+    )
+def duration_menu_5_only():
+    keyboard = [
+        ["5 секунд"]
+    ]
 
-def duration_inline_menu(mode: str):
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"5 секунд — {VIDEO_PRICES['5']} ₽", callback_data=f"duration_{mode}_5")],
-        [InlineKeyboardButton(f"10 секунд — {VIDEO_PRICES['10']} ₽", callback_data=f"duration_{mode}_10")],
-        [InlineKeyboardButton(f"15 секунд — {VIDEO_PRICES['15']} ₽", callback_data=f"duration_{mode}_15")],
-        [InlineKeyboardButton("⬅️ НАЗАД", callback_data="video_menu")],
-    ])
-
-
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True
+    )
 def topup_menu():
-    keyboard = [[f"💳 Пополнить баланс на {amount} ₽"] for amount in TOPUP_AMOUNTS]
-    keyboard.append(["🏠 Главное меню"])
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    keyboard = [
+        ["💳 Пополнить баланс на 196 ₽"],
+        ["💳 Пополнить баланс на 343 ₽"],
+        ["💳 Пополнить баланс на 490 ₽"],
+        ["🚀 Запустить бота"]
+    ]
 
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True
+    )
+def inline_menu():
+    keyboard = [
+        [InlineKeyboardButton("💳 Пополнить баланс", callback_data="buy")],
+        [InlineKeyboardButton("🎁 БЕСПЛАТНЫЕ генерации", callback_data="ref")],
+        [InlineKeyboardButton("💸 ЗАРАБОТАТЬ с Xena", callback_data="earn")],
+        [InlineKeyboardButton("💼 Кабинет партнёра", callback_data="partner_profile")],
+        [InlineKeyboardButton("🚀 Запустить бота", callback_data="start")],
+        [InlineKeyboardButton("📘 Инструкция", callback_data="help")],
+        [InlineKeyboardButton("👤 Мой баланс", callback_data="profile")],
+        [InlineKeyboardButton("🆘 Связаться с поддержкой", url="https://t.me/Vlad101ss")]
+    ]
 
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            paid_credits INTEGER DEFAULT 0,
-            generations_count INTEGER DEFAULT 0,
-            spent_total INTEGER DEFAULT 0,
-            created_at INTEGER DEFAULT 0
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-
-def ensure_user(user_id: int, username: str | None = None):
+    return InlineKeyboardMarkup(keyboard)
+def add_paid_credit(user_id: int, amount: int = 1):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute(
-        "INSERT OR IGNORE INTO users (user_id, username, paid_credits, generations_count, spent_total, created_at) VALUES (?, ?, 0, 0, 0, ?)",
-        (user_id, (username or "").lower(), int(time.time()))
+        "UPDATE users SET paid_credits = paid_credits + ? WHERE user_id = ?",
+        (amount, user_id)
     )
-    if username:
-        cur.execute("UPDATE users SET username = ? WHERE user_id = ?", (username.lower(), user_id))
-    conn.commit()
-    conn.close()
-
-
-def get_balance(user_id: int) -> int:
-    ensure_user(user_id)
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("SELECT paid_credits FROM users WHERE user_id = ?", (user_id,))
-    row = cur.fetchone()
-    conn.close()
-    return row[0] if row else 0
-
-
-def add_paid_credit(user_id: int, amount: int):
-    ensure_user(user_id)
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("UPDATE users SET paid_credits = paid_credits + ? WHERE user_id = ?", (amount, user_id))
     conn.commit()
     conn.close()
 
@@ -142,546 +125,1041 @@ def decrement_paid_credit(user_id: int, amount: int):
     conn.commit()
     conn.close()
 
-
-def add_generation_stats(user_id: int, cost: int):
+def init_db():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            free_used INTEGER DEFAULT 0,
+            paid_credits INTEGER DEFAULT 0
+        )
+    """)
+
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN username TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN referrer_id INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN ref_mode TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN partner_balance INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
+    conn.commit()
+    conn.close()
+    
+    
+def get_user(user_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
     cur.execute(
-        "UPDATE users SET generations_count = generations_count + 1, spent_total = spent_total + ? WHERE user_id = ?",
-        (cost, user_id)
+        "SELECT free_used, paid_credits FROM users WHERE user_id = ?",
+        (user_id,)
     )
+    row = cur.fetchone()
+
+    if row is None:
+        cur.execute(
+            "INSERT INTO users (user_id, free_used, paid_credits) VALUES (?, 0, 0)",
+            (user_id,)
+        )
+        conn.commit()
+        free_used = 0
+        paid_credits = 0
+    else:
+        free_used, paid_credits = row
+
+    conn.close()
+    return free_used, paid_credits
+
+
+def save_username(user_id: int, username):
+    if not username:
+        return
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute(
+        "INSERT OR IGNORE INTO users (user_id, free_used, paid_credits, username) VALUES (?, 0, 0, ?)",
+        (user_id, username.lower())
+    )
+
+    cur.execute(
+        "UPDATE users SET username = ? WHERE user_id = ?",
+        (username.lower(), user_id)
+    )
+
     conn.commit()
     conn.close()
 
 
 def get_user_id_by_username(username: str):
-    username = username.replace("@", "").lower().strip()
+    username = username.replace("@", "").lower()
+
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    cur.execute("SELECT user_id FROM users WHERE username = ?", (username,))
+
+    cur.execute(
+        "SELECT user_id FROM users WHERE username = ?",
+        (username,)
+    )
+
     row = cur.fetchone()
     conn.close()
-    return row[0] if row else None
 
+    if row is None:
+        return None
 
+    return row[0]
+    
 def give_balance(user_id: int, amount: int):
-    ensure_user(user_id)
-    add_paid_credit(user_id, amount)
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute(
+        "INSERT OR IGNORE INTO users (user_id, free_used, paid_credits) VALUES (?, 0, 0)",
+        (user_id,)
+    )
+
+    cur.execute(
+        "UPDATE users SET paid_credits = paid_credits + ? WHERE user_id = ?",
+        (amount, user_id)
+    )
+
+    conn.commit()
+    conn.close()
+def set_referrer(user_id: int, referrer_id: int, ref_mode: str):
+    if user_id == referrer_id:
+        return
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute("SELECT referrer_id FROM users WHERE user_id = ?", (user_id,))
+    row = cur.fetchone()
+
+    if row and row[0]:
+        conn.close()
+        return
+
+    cur.execute(
+        "UPDATE users SET referrer_id = ?, ref_mode = ? WHERE user_id = ?",
+        (referrer_id, ref_mode, user_id)
+    )
+
+    conn.commit()
+    conn.close()
 
 
-def create_yookassa_payment(user_id: int, amount: int):
-    url = "https://api.yookassa.ru/v3/payments"
-    headers = {
-        "Idempotence-Key": f"xena2_topup_{user_id}_{amount}_{int(time.time())}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "amount": {"value": f"{amount}.00", "currency": "RUB"},
-        "capture": True,
-        "confirmation": {"type": "redirect", "return_url": f"https://t.me/{BOT_USERNAME}"},
-        "description": f"Пополнение баланса Xena 2.0 на {amount} ₽",
-        "metadata": {"user_id": str(user_id), "amount": str(amount)},
-    }
-    response = requests.post(url, auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY), headers=headers, json=payload, timeout=60)
-    response.raise_for_status()
-    result = response.json()
-    return result["confirmation"]["confirmation_url"], result["id"]
+def get_referrer(user_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT referrer_id, ref_mode FROM users WHERE user_id = ?",
+        (user_id,)
+    )
+
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return 0, ""
+
+    return row[0] or 0, row[1] or ""
 
 
-def check_yookassa_payment(payment_id: str) -> bool:
-    url = f"https://api.yookassa.ru/v3/payments/{payment_id}"
-    response = requests.get(url, auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY), timeout=60)
-    response.raise_for_status()
-    return response.json().get("status") == "succeeded"
+def add_partner_money(user_id: int, amount: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute(
+        "UPDATE users SET partner_balance = partner_balance + ? WHERE user_id = ?",
+        (amount, user_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+def get_partner_balance(user_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT partner_balance FROM users WHERE user_id = ?",
+        (user_id,)
+    )
+
+    row = cur.fetchone()
+    conn.close()
+
+    if row is None:
+        return 0
+
+    return row[0] or 0
+
+def apply_referral_bonus(user_id: int, duration: str):
+    referrer_id, ref_mode = get_referrer(user_id)
+
+    if not referrer_id:
+        return
+
+    if ref_mode == "free":
+        bonus = VIDEO_PRICES[duration]
+        give_balance(referrer_id, bonus)
+
+    if ref_mode == "money":
+        if duration == "5":
+            bonus = 50
+        elif duration == "10":
+            bonus = 100
+        else:
+            bonus = 0
+
+        if bonus > 0:
+            add_partner_money(referrer_id, bonus)
+
+def get_all_partners():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT user_id, username, partner_balance
+        FROM users
+        WHERE partner_balance > 0
+        ORDER BY partner_balance DESC
+        """
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return rows
 
 
-def kie_headers_json():
-    return {"Authorization": f"Bearer {KIE_API_KEY}", "Content-Type": "application/json"}
+def reset_partner_balance(user_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute(
+        "UPDATE users SET partner_balance = 0 WHERE user_id = ?",
+        (user_id,)
+    )
+
+    conn.commit()
+    conn.close()
 
 
-def kie_headers_auth():
-    return {"Authorization": f"Bearer {KIE_API_KEY}"}
+def increment_free_used(user_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET free_used = free_used + 1 WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
 
 
 def upload_image_to_kie(image_path: str) -> str:
     url = "https://kieai.redpandaai.co/api/file-stream-upload"
+
+    headers = {
+        "Authorization": f"Bearer {KIE_API_KEY}"
+    }
+
     with open(image_path, "rb") as f:
-        files = {"file": (Path(image_path).name, f, "image/jpeg")}
-        data = {"uploadPath": "images/xena-2-bot", "fileName": Path(image_path).name}
-        response = requests.post(url, headers=kie_headers_auth(), files=files, data=data, timeout=3600)
+        files = {
+            "file": (Path(image_path).name, f, "image/jpeg")
+        }
+        data = {
+            "uploadPath": "images/tarantino-bot",
+            "fileName": Path(image_path).name
+        }
+
+        response = requests.post(url, headers=headers, files=files, data=data, timeout=3600)
+
     response.raise_for_status()
     result = response.json()
+
     if not result.get("success"):
         raise RuntimeError(f"Ошибка загрузки картинки в Kie: {result}")
-    return result["data"]["downloadUrl"]
+
+    download_url = result["data"]["downloadUrl"]
+    return download_url
 
 
-def create_kie_task(payload: dict) -> str:
+def create_kie_video_task(image_url: str, prompt: str, duration: str) -> str:
     url = "https://api.kie.ai/api/v1/jobs/createTask"
-    response = requests.post(url, headers=kie_headers_json(), json=payload, timeout=3600)
-    if response.status_code == 422:
-        raise RuntimeError("KIE_422_INPUT_REJECTED")
+
+    headers = {
+        "Authorization": f"Bearer {KIE_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+    "model": "grok-imagine-video-1-5-preview",
+    "input": {
+        "prompt": prompt,
+        "image_urls": [
+            image_url
+        ],
+        "aspect_ratio": "9:16",
+        "resolution": "480p",
+        "duration": int(duration)
+    }
+}
+
+    response = requests.post(url, headers=headers, json=payload, timeout=3600)
     response.raise_for_status()
     result = response.json()
+
     if result.get("code") != 200:
-        err = str(result).lower()
-        if "422" in err or "please try again" in err or "change your input files or prompt" in err:
-            raise RuntimeError("KIE_422_INPUT_REJECTED")
-        raise RuntimeError(f"Ошибка создания задачи Kie: {result}")
+        raise RuntimeError(f"Ошибка создания видео-задачи Kie: {result}")
+
     return result["data"]["taskId"]
 
 
-def create_kie_image_to_video_task(image_url: str, prompt: str, duration: str) -> str:
-    payload = {
-        "model": GROK_VIDEO_MODEL,
-        "input": {
-            "prompt": prompt,
-            "image_urls": [image_url],
-            "aspect_ratio": ASPECT_RATIO,
-            "resolution": RESOLUTION,
-            "duration": int(duration),
-        },
-    }
-    return create_kie_task(payload)
-
-
-def create_kie_text_to_video_task(prompt: str, duration: str) -> str:
-    payload = {
-        "model": GROK_VIDEO_MODEL,
-        "input": {
-            "prompt": prompt,
-            "aspect_ratio": ASPECT_RATIO,
-            "resolution": RESOLUTION,
-            "duration": int(duration),
-        },
-    }
-    return create_kie_task(payload)
-
-
-def create_kie_image_task(prompt: str) -> str:
-    payload = {
-        "model": TEXT_TO_IMAGE_MODEL,
-        "input": {
-            "prompt": prompt,
-            "aspect_ratio": ASPECT_RATIO,
-            "resolution": RESOLUTION,
-        },
-    }
-    return create_kie_task(payload)
-
-
-def extract_urls(result_json: dict):
-    urls = []
-    for key in ["resultUrls", "videoUrls", "videos", "imageUrls", "images", "urls"]:
-        value = result_json.get(key)
-        if isinstance(value, list):
-            for item in value:
-                if isinstance(item, str):
-                    urls.append(item)
-                elif isinstance(item, dict):
-                    for k in ["url", "src", "downloadUrl"]:
-                        if item.get(k):
-                            urls.append(item[k])
-        elif isinstance(value, str):
-            urls.append(value)
-    return urls
-
-
-def wait_kie_result(task_id: str) -> str:
+def wait_kie_video_result(task_id: str) -> str:
     url = "https://api.kie.ai/api/v1/jobs/recordInfo"
-    for _ in range(360):
-        response = requests.get(url, headers=kie_headers_auth(), params={"taskId": task_id}, timeout=60)
-        response.raise_for_status()
-        result = response.json()
+
+    headers = {
+        "Authorization": f"Bearer {KIE_API_KEY}"
+    }
+
+    for _ in range(3600):
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                params={"taskId": task_id},
+                timeout=3600
+            )
+            response.raise_for_status()
+            result = response.json()
+        except requests.exceptions.Timeout:
+            time.sleep(10)
+            continue
+
         data = result.get("data", {})
         state = data.get("state")
+
         if state == "success":
-            raw = data.get("resultJson")
-            if not raw:
-                raise RuntimeError(f"Kie вернул success, но resultJson пустой: {data}")
-            result_json = json.loads(raw)
-            urls = extract_urls(result_json)
-            if not urls:
-                raise RuntimeError(f"Результат готов, но ссылка не найдена: {result_json}")
-            return urls[0]
+            result_json_raw = data.get("resultJson")
+            result_json = json.loads(result_json_raw)
+
+            video_urls = (
+                result_json.get("resultUrls")
+                or result_json.get("videoUrls")
+                or result_json.get("videos")
+                or []
+            )
+
+            if not video_urls:
+                raise RuntimeError(f"Видео готово, но ссылка не найдена: {result_json}")
+
+            return video_urls[0]
+
         if state == "fail":
-            fail_msg = str(data.get("failMsg") or "")
-            if "please try again" in fail_msg.lower() or "change your input files or prompt" in fail_msg.lower():
-                raise RuntimeError("KIE_422_INPUT_REJECTED")
-            raise RuntimeError(f"Kie не смог выполнить задачу: {fail_msg}")
+            raise RuntimeError(f"Kie не смог сгенерировать видео: {data.get('failMsg')}")
+
         time.sleep(10)
-    raise RuntimeError("Задача генерировалась слишком долго. Попробуй позже.")
+
+    raise RuntimeError("Видео генерировалось слишком долго. Попробуй позже.")
 
 
-def download_file(url: str, user_id: int, suffix: str) -> str:
-    path = MEDIA_DIR / f"{user_id}_{int(time.time())}.{suffix}"
-    response = requests.get(url, timeout=3600)
+def download_video(video_url: str, user_id: int) -> str:
+    video_path = MEDIA_DIR / f"{user_id}_result.mp4"
+
+    response = requests.get(video_url, timeout=3600)
     response.raise_for_status()
-    with open(path, "wb") as f:
+
+    with open(video_path, "wb") as f:
         f.write(response.content)
-    return str(path)
+
+    return str(video_path)
 
 
-def instruction_text():
-    return (
-        "📘 Инструкция Xena 2.0\n\n"
-        "1. Нажми 🎬 СОЗДАТЬ ВИДЕО.\n"
-        "2. Выбери режим: Фото → Видео, Текст → Видео или Текст → Картинка.\n"
-        "3. Для видео выбери длительность: 5, 10 или 15 секунд.\n"
-        "4. Отправь фото или описание.\n"
-        "5. Дождись результата.\n\n"
-        "Формат генераций: 9:16 — вертикальный формат для TikTok, Reels и Shorts.\n\n"
-        "⚠️ Если нейросеть не принимает фото или описание, измени запрос: убери запрещённые, слишком откровенные или опасные детали.\n\n"
-        "Ответственность за использование результата несёт пользователь."
+def create_yookassa_payment(user_id: int, amount: int) -> str:
+    url = "https://api.yookassa.ru/v3/payments"
+
+    headers = {
+        "Idempotence-Key": f"topup_{user_id}_{amount}_{int(time.time())}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "amount": {
+            "value": f"{amount}.00",
+            "currency": "RUB"
+        },
+        "capture": True,
+        "confirmation": {
+            "type": "redirect",
+            "return_url": "https://t.me/Xena18Bot"
+        },
+        "description": f"Пополнение баланса Telegram-бота на {amount} рублей",
+        "metadata": {
+            "user_id": str(user_id),
+            "amount": str(amount)
+        }
+    }
+
+    response = requests.post(
+        url,
+        auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
+        headers=headers,
+        json=payload,
+        timeout=60
     )
 
+    response.raise_for_status()
+    result = response.json()
 
-def kie_422_text():
-    return (
-        "⚠️ Нейросеть не приняла этот запрос.\n\n"
-        "Скорее всего, фото или описание не прошли проверку безопасности.\n\n"
-        "Попробуй:\n"
-        "— заменить фото;\n"
-        "— смягчить описание;\n"
-        "— убрать слишком откровенные или запрещённые детали."
-    )
-
-
-async def send_main_menu(message):
-    await message.reply_text("🔥 Xena 2.0\n\nВыбери действие:", reply_markup=main_inline_menu())
-
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    ensure_user(user.id, user.username)
-    await update.message.reply_text("🔥 Добро пожаловать в Xena 2.0!\n\nЯ создаю AI-видео и изображения в формате 9:16.")
-    await send_main_menu(update.message)
-
+    return result["confirmation"]["confirmation_url"], result["id"]
+def generate_video_from_image(image_path: str, prompt: str, user_id: int, duration: str) -> str:
+    image_url = upload_image_to_kie(image_path)
+    task_id = create_kie_video_task(image_url, prompt, duration)
+    video_url = wait_kie_video_result(task_id)
+    video_path = download_video(video_url, user_id)
+    return video_path
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    ensure_user(user.id, user.username)
-    await send_main_menu(update.message)
-
+    await update.message.reply_text(
+        "Меню бота",
+        reply_markup=inline_menu()
+    )
 
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    ensure_user(user.id, user.username)
-    await update.message.reply_text(f"Твой Telegram ID:\n{user.id}")
-
-
-async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("💳 Пополнение баланса\n\nВыбери сумму:", reply_markup=topup_menu())
+    user_id = update.message.from_user.id
+    save_username(user_id, update.message.from_user.username)
+    await update.message.reply_text(
+        f"Твой Telegram ID:\n{user_id}"
+    )
 
 
 async def give(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id not in ADMIN_IDS:
+    admin_id = update.message.from_user.id
+
+    if admin_id not in ADMIN_IDS:
         await update.message.reply_text("❌ Нет доступа.")
         return
+
     if len(context.args) != 2:
-        await update.message.reply_text("Используй:\n/give USER_ID СУММА")
+        await update.message.reply_text(
+            "Используй:\n"
+            "/give USER_ID СУММА\n\n"
+            "Пример:\n"
+            "/give 123456789 98"
+        )
         return
+
     try:
         target_id = int(context.args[0])
         amount = int(context.args[1])
-    except Exception:
+    except:
         await update.message.reply_text("❌ Ошибка формата.")
         return
+
     give_balance(target_id, amount)
-    await update.message.reply_text(f"✅ Пользователю {target_id} выдано {amount} ₽")
 
-
+    await update.message.reply_text(
+        f"✅ Пользователю {target_id} выдано {amount} ₽"
+    )
 async def giveuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id not in ADMIN_IDS:
+    admin_id = update.message.from_user.id
+
+    if admin_id not in ADMIN_IDS:
         await update.message.reply_text("❌ Нет доступа.")
         return
+
     if len(context.args) != 2:
-        await update.message.reply_text("Используй:\n/giveuser @username СУММА")
+        await update.message.reply_text(
+            "Используй:\n"
+            "/giveuser @username СУММА\n\n"
+            "Пример:\n"
+            "/giveuser @username 98"
+        )
         return
+
     username = context.args[0]
+
     try:
         amount = int(context.args[1])
-    except Exception:
+    except:
         await update.message.reply_text("❌ Ошибка суммы.")
         return
+
     target_id = get_user_id_by_username(username)
+
     if target_id is None:
-        await update.message.reply_text("❌ Пользователь не найден. Он должен сначала написать боту /start.")
+        await update.message.reply_text(
+            "❌ Пользователь не найден.\n"
+            "Он должен сначала написать боту /start."
+        )
         return
+
     give_balance(target_id, amount)
-    await update.message.reply_text(f"✅ {username} выдано {amount} ₽")
 
-
-async def statsuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Нет доступа.")
-        return
-    if len(context.args) != 1:
-        await update.message.reply_text("Используй:\n/statsuser @username")
-        return
-    username = context.args[0].replace("@", "").lower()
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("SELECT user_id, username, paid_credits, generations_count, spent_total FROM users WHERE username = ?", (username,))
-    row = cur.fetchone()
-    conn.close()
-    if row is None:
-        await update.message.reply_text("❌ Пользователь не найден.")
-        return
-    user_id, username, balance, generations_count, spent_total = row
     await update.message.reply_text(
-        f"👤 Статистика пользователя:\n\n@{username}\nID: {user_id}\n\n🎬 Генераций: {generations_count or 0}\n💸 Потратил: {spent_total or 0} ₽\n💰 Баланс: {balance or 0} ₽"
+        f"✅ @{username.replace('@', '')} выдано {amount} ₽"
     )
 
+async def partners(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    admin_id = update.message.from_user.id
 
+    if admin_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Нет доступа.")
+        return
+
+    rows = get_all_partners()
+
+    if not rows:
+        await update.message.reply_text(
+            "Партнёров с балансом нет."
+        )
+        return
+
+    text = "💼 Партнёрские выплаты:\n\n"
+
+    for user_id, username, balance in rows:
+        name = username or "без username"
+
+        text += (
+            f"ID: {user_id}\n"
+            f"@{name}\n"
+            f"К выплате: {balance} ₽\n\n"
+        )
+
+    await update.message.reply_text(text)
+
+async def paypartner(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    admin_id = update.message.from_user.id
+
+    if admin_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Нет доступа.")
+        return
+
+    if len(context.args) != 1:
+        await update.message.reply_text(
+            "Используй:\n"
+            "/paypartner USER_ID"
+        )
+        return
+
+    try:
+        target_id = int(context.args[0])
+    except:
+        await update.message.reply_text("Ошибка ID.")
+        return
+
+    reset_partner_balance(target_id)
+
+    await update.message.reply_text(
+        f"✅ Партнёрский баланс {target_id} обнулён."
+    )
+def check_yookassa_payment(payment_id: str) -> bool:
+    url = f"https://api.yookassa.ru/v3/payments/{payment_id}"
+
+    response = requests.get(
+        url,
+        auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
+        timeout=60
+    )
+
+    response.raise_for_status()
+    result = response.json()
+
+    return result.get("status") == "succeeded"
 async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     user_id = query.from_user.id
-    ensure_user(user_id, query.from_user.username)
     action = query.data
 
-    if action == "main_menu":
-        await query.message.reply_text("Главное меню:", reply_markup=main_inline_menu())
-        return
-    if action == "video_menu":
-        await query.message.reply_text("🎬 Что создаём?", reply_markup=video_mode_menu())
-        return
-    if action == "mode_image_to_video":
-        user_states[user_id] = {"mode": "image_to_video_wait_duration"}
-        await query.message.reply_text("⏱ Выбери длительность видео:", reply_markup=duration_inline_menu("image_to_video"))
-        return
-    if action == "mode_text_to_video":
-        user_states[user_id] = {"mode": "text_to_video_wait_duration"}
-        await query.message.reply_text("⏱ Выбери длительность видео:", reply_markup=duration_inline_menu("text_to_video"))
-        return
-    if action == "mode_text_to_image":
-        balance = get_balance(user_id)
-        if balance < IMAGE_PRICE:
-            await query.message.reply_text(f"💳 Недостаточно средств.\n\nСтоимость картинки: {IMAGE_PRICE} ₽\nТвой баланс: {balance} ₽", reply_markup=main_inline_menu())
-            return
-        user_states[user_id] = {"mode": "text_to_image_wait_prompt"}
-        await query.message.reply_text("🖼 Напиши описание картинки.\n\nСтоимость: 50 ₽.")
-        return
-    if action.startswith("duration_"):
-        parts = action.split("_")
-        duration = parts[-1]
-        mode = "_".join(parts[1:-1])
-        cost = VIDEO_PRICES[duration]
-        balance = get_balance(user_id)
-        if balance < cost:
-            await query.message.reply_text(f"💳 Недостаточно средств.\n\nСтоимость: {cost} ₽\nТвой баланс: {balance} ₽", reply_markup=main_inline_menu())
-            return
-        if mode == "image_to_video":
-            user_states[user_id] = {"mode": "image_to_video_wait_photo", "duration": duration}
-            await query.message.reply_text("📸 Отправь фото, которое хочешь оживить.")
-            return
-        if mode == "text_to_video":
-            user_states[user_id] = {"mode": "text_to_video_wait_prompt", "duration": duration}
-            await query.message.reply_text("📝 Напиши описание видео.\n\nЧем подробнее описание, тем лучше результат.")
-            return
-    if action == "buy":
-        await query.message.reply_text("💳 Пополнение баланса\n\nВыбери сумму:", reply_markup=topup_menu())
-        return
-    if action == "profile":
-        balance = get_balance(user_id)
-        await query.message.reply_text(
-            f"👤 Мой баланс\n\nБаланс: {balance} ₽\n\nСтоимость:\n🖼 Картинка — {IMAGE_PRICE} ₽\n🎬 5 секунд — {VIDEO_PRICES['5']} ₽\n🎬 10 секунд — {VIDEO_PRICES['10']} ₽\n🎬 15 секунд — {VIDEO_PRICES['15']} ₽"
-        )
-        return
-    if action == "help":
-        await query.message.reply_text(instruction_text())
-        return
     if action.startswith("checkpay_"):
         parts = action.split("_")
         payment_id = parts[1]
         amount = int(parts[2])
+
         try:
             paid = check_yookassa_payment(payment_id)
         except Exception as e:
-            await query.message.reply_text(f"❌ Не удалось проверить оплату:\n\n{e}")
+            await query.message.reply_text(
+                f"❌ Не удалось проверить оплату:\n\n{e}"
+            )
             return
+
         if not paid:
-            await query.message.reply_text("⏳ Оплата пока не найдена.\n\nЕсли уже оплатил — подожди 10–20 секунд и нажми кнопку ещё раз.")
+            await query.message.reply_text(
+                "⏳ Оплата пока не найдена.\n\n"
+                "Если ты уже оплатил — подожди 10–20 секунд и нажми кнопку ещё раз."
+            )
             return
+
         add_paid_credit(user_id, amount)
-        await query.message.reply_text(f"✅ Оплата получена!\n\nБаланс пополнен на {amount} ₽.\nТекущий баланс: {get_balance(user_id)} ₽.", reply_markup=main_inline_menu())
+        _, paid_credits = get_user(user_id)
+
+        await query.message.reply_text(
+            f"✅ Оплата получена!\n\n"
+            f"Баланс пополнен на {amount} ₽.\n"
+            f"Текущий баланс: {paid_credits} ₽.\n\n"
+            f"Теперь отправь картинку."
+        )
         return
+
+    if action == "buy":
+        await query.message.reply_text(
+            "💳 Пополнение баланса:\n\n"
+            "Стоимость генераций:\n"
+            "5 секунд — 98 ₽\n"
+            "10 секунд — 147 ₽\n"
+            "Выбери сумму пополнения:",
+            reply_markup=topup_menu()
+        )
+        return
+
+    if action == "ref":
+        await query.message.reply_text(
+            f"🎁 БЕСПЛАТНЫЕ генерации\n\n"
+            f"Приглашай друзей и получай бонусы:\n"
+            f"• друг сделал платный ролик 5 сек — тебе +98 ₽ на баланс\n"
+            f"• друг сделал платный ролик 10 сек — тебе +147 ₽ на баланс\n\n"
+            f"Твоя ссылка:\n"
+            f"https://t.me/Xena18Bot?start=free_{user_id}"
+        )
+        return
+
+    if action == "earn":
+        await query.message.reply_text(
+            f"💸 ЗАРАБОТАТЬ с Xena\n\n"
+            f"Приглашай людей и получай деньги на партнёрский счёт:\n"
+            f"• за платную генерацию 5 сек — 50 ₽\n"
+            f"• за платную генерацию 10 сек — 100 ₽\n\n"
+            f"Твоя ссылка:\n"
+            f"https://t.me/Xena18Bot?start=money_{user_id}"
+        )
+        return
+
+    if action == "partner_profile":
+        partner_balance = get_partner_balance(user_id)
+
+        await query.message.reply_text(
+            f"💼 Кабинет партнёра\n\n"
+            f"Баланс к выплате: {partner_balance} ₽\n\n"
+            f"Когда хочешь получить выплату — напиши в поддержку."
+        )
+        return
+
+    if action == "start":
+        await start(query, context)
+        return
+
+    if action == "help":
+        await query.message.reply_text(
+            "📘 Инструкция:\n\n"
+            "1. Отправьте картинку.\n"
+            "Если хотите оживить человека, отправляйте фото, на котором будет хорошо видно лицо.\n"
+            "2. Выберите длительность видео.\n"
+            "На данный момент оптимальная длительность 5-10 секунд, дальше нейросеть начинает искажать происходящее, теряется качество и реалистичность.\n"
+            "Более длительные AI ролики сейчас создают обьединяя много коротких роликов в один большой, используя последние кадры для сознания продолжения\n"
+            "3. Составьте описание видео.\n"
+            "Пишите очень подробно, что бы вы хотели видеть\n"
+            "4. Дождись готового AI-видео.\n"
+            "Нажимая старт, вы соглашаетесь с правилами использования бота, а именно:\n"
+            "а) Запрещается использовать бот для создания с целью распространения контента, нарушающего законодательство или права третьих лиц, включая:\n"
+            "незаконный контент\n"
+            "материалы сексуального характера с несовершеннолетними\n"
+            "экстремизм, терроризм, разжигание ненависти\n"
+            "мошенничество и введение в заблуждение\n"
+            "клевету и нарушение репутации\n"
+            "незаконное использование чужих изображений, лиц или авторских материалов\n"
+            "б) Бот является автоматическим инструментом генерации контента. Ответственность за использование результатов несёт пользователь."
+        )
+        return
+
+    if action == "profile":
+        free_used, paid_credits = get_user(user_id)
+        free_left = max(0, 1 - free_used)
+
+        await query.message.reply_text(
+            f"👤 Твой баланс:\n\n"
+            f"Бесплатных генераций: {free_left}\n"
+            f"Баланс: {paid_credits} ₽\n\n"
+            f"Стоимость:\n"
+            f"5 секунд — {VIDEO_PRICES['5']} ₽\n"
+            f"10 секунд — {VIDEO_PRICES['10']} ₽"
+        )
+        return
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    save_username(user_id, update.message.from_user.username)
+    get_user(user_id)
+
+    if context.args:
+        ref_code = context.args[0]
+
+        if ref_code.startswith("free_"):
+            referrer_id = int(ref_code.replace("free_", ""))
+            set_referrer(user_id, referrer_id, "free")
+
+        if ref_code.startswith("money_"):
+            referrer_id = int(ref_code.replace("money_", ""))
+            set_referrer(user_id, referrer_id, "money")
+    
+    await update.message.reply_text(
+        "Шаг 1: Перед тем как начать, подпишись на канал https://t.me/Xena18H, чтобы нас не потерять, если бота заблокируют!\n\n"
+        "Затем возвращайся, и приступим к СОЗДАНИЮ ВИДЕО",
+        disable_web_page_preview=True
+    )
+
+    await update.message.reply_text(
+        "Шаг 2: отправь мне картинку, которую хочешь оживить!"
+    )
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    user_id = user.id
-    ensure_user(user_id, user.username)
-    state = user_states.get(user_id)
-    if not state or state.get("mode") != "image_to_video_wait_photo":
-        await update.message.reply_text("Сначала нажми 🎬 СОЗДАТЬ ВИДЕО → 📸 Фото → Видео.")
+    user_id = update.message.from_user.id
+
+    free_used, paid_credits = get_user(user_id)
+
+    if paid_credits < VIDEO_PRICES["5"]:
+        await update.message.reply_text(
+            "💳Недостаточно средств для генерации.\n\n"
+            "👇Пополнить баланс или получить БЕСПЛАТНО👇"
+        )
+
+        await update.message.reply_text(
+            "Меню бота",
+            reply_markup=inline_menu()
+        )
         return
+
+    if free_used >= 1 and paid_credits < VIDEO_PRICES["5"]:
+        await update.message.reply_text(
+            "💳Недостаточно средств для генерации.\n\n"
+            "👇Пополнить баланс или получить БЕСПЛАТНО👇"
+        )
+
+        await update.message.reply_text(
+            "Меню бота",
+            reply_markup=inline_menu()
+        )
+        return
+
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
+
     image_path = MEDIA_DIR / f"{user_id}_{photo.file_unique_id}.jpg"
     await file.download_to_drive(str(image_path))
-    state["image_path"] = str(image_path)
-    state["mode"] = "image_to_video_wait_prompt"
-    user_states[user_id] = state
-    await update.message.reply_text("✅ Фото получил.\n\nТеперь напиши описание видео.")
+
+    user_states[user_id] = {"image_path": str(image_path)}
+
+
+    if paid_credits < VIDEO_PRICES["10"]:
+        await update.message.reply_text(
+            "✅ Картинку получил.\n\n"
+            "Выбери длительность видео:",
+            reply_markup=duration_menu_5_only()
+        )
+        return
+
+    await update.message.reply_text(
+        "✅ Картинку получил.\n\n"
+        "Выбери длительность видео:",
+        reply_markup=duration_menu()
+    )
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    user_id = user.id
-    ensure_user(user_id, user.username)
-    text = update.message.text.strip()
-    if text == "🏠 Главное меню":
-        await send_main_menu(update.message)
+    user_id = update.message.from_user.id
+    prompt = update.message.text
+
+    if prompt == "💳 Купить генерации: /buy":
+        await buy(update, context)
         return
-    if text.startswith("💳 Пополнить баланс на "):
-        try:
-            amount = int(text.replace("💳 Пополнить баланс на ", "").replace(" ₽", "").strip())
-        except Exception:
-            await update.message.reply_text("❌ Не удалось понять сумму.")
-            return
-        if amount not in TOPUP_AMOUNTS:
-            await update.message.reply_text("❌ Неверная сумма пополнения.")
-            return
+
+    if prompt.startswith("💳 Пополнить баланс на "):
+        amount_text = (
+            prompt
+            .replace("💳 Пополнить баланс на ", "")
+            .replace(" ₽", "")
+            .strip()
+        )
+        amount = int(amount_text)
+
         payment_url, payment_id = create_yookassa_payment(user_id, amount)
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Оплатить", url=payment_url)],
-            [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")],
+            [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")]
         ])
+
         await update.message.reply_text(
-            f"💳 Пополнение баланса на {amount} ₽\n\n1. Нажми «Оплатить»\n2. После оплаты вернись сюда\n3. Нажми «✅ Проверить оплату»\n\nЕсли ссылка не открывается, отключи VPN на время оплаты.",
-            reply_markup=keyboard,
+            f"💳 Пополнение баланса на {amount} ₽\n\n"
+            f"1. Нажми «Оплатить»\n"
+            f"2. После оплаты вернись сюда\n"
+            f"3. Нажми «✅ Проверить оплату»",
+            reply_markup=keyboard
         )
         return
-    state = user_states.get(user_id)
-    if not state:
-        await update.message.reply_text("Выбери действие в меню.", reply_markup=main_inline_menu())
-        return
-    mode = state.get("mode")
-    if mode == "image_to_video_wait_prompt":
-        state["prompt"] = text
-        await run_image_to_video(update, user_id)
-        return
-    if mode == "text_to_video_wait_prompt":
-        state["prompt"] = text
-        await run_text_to_video(update, user_id)
-        return
-    if mode == "text_to_image_wait_prompt":
-        state["prompt"] = text
-        await run_text_to_image(update, user_id)
-        return
-    await update.message.reply_text("Не понял команду. Открой главное меню.", reply_markup=main_inline_menu())
 
-
-async def run_image_to_video(update: Update, user_id: int):
-    state = user_states[user_id]
-    duration = state["duration"]
-    cost = VIDEO_PRICES[duration]
-    if get_balance(user_id) < cost:
-        await update.message.reply_text(f"💳 Недостаточно средств.\n\nБаланс: {get_balance(user_id)} ₽\nСтоимость: {cost} ₽", reply_markup=main_inline_menu())
-        user_states.pop(user_id, None)
+    if prompt == "🎁 БЕСПЛАТНЫЕ генерации: /ref":
+        await update.message.reply_text("🎁 Реферальную программу подключим следующим этапом.")
         return
-    await update.message.reply_text("🎥 Запускаю нейросеть.\n\nГенерация может занять 2–10 минут. Не отправляй новый запрос, пока я работаю.")
+
+    if prompt == "🚀 Запустить бота":
+        await menu(update, context)
+        return
+
+    if prompt == "📘 Инструкция: /help":
+        await update.message.reply_text(
+            "📘 Инструкция:\n\n"
+            "1. Отправьте картинку.\n"
+            "Если хотите оживить человека, отправляйте фото, на котором будет хорошо видно лицо.\n"
+            "2. Выберите длительность видео.\n"
+            "На данный момент оптимальная длительность 5-10 секунд, дальше нейросеть начинает искажать происходящее, теряется качество и реалистичность.\n"
+            "Более длительные AI ролики сейчас создают обьединяя много коротких роликов в один большой, используя последние кадры для сознания продолжения\n"
+            "3. Составьте описание видео.\n"
+            "Пишите очень подробно, что бы вы хотели видеть\n"
+            "4. Дождись готового AI-видео.\n"
+            "Нажимая старт, вы соглашаетесь с правилами использования бота, а именно:\n"
+            "а) Запрещается использовать бот для создания с целью распространения контента, нарушающего законодательство или права третьих лиц, включая:\n"
+            "незаконный контент\n"
+            "материалы сексуального характера с несовершеннолетними\n"
+            "экстремизм, терроризм, разжигание ненависти\n"
+            "мошенничество и введение в заблуждение\n"
+            "клевету и нарушение репутации\n"
+            "незаконное использование чужих изображений, лиц или авторских материалов\n"
+            "б) Бот является автоматическим инструментом генерации контента. Ответственность за использование результатов несёт пользователь."
+        )
+        return
+
+    if prompt == "👤 Мой баланс: /profile":
+        free_used, paid_credits = get_user(user_id)
+        free_left = max(0, 1 - free_used)
+
+        await update.message.reply_text(
+            f"👤 Твой баланс:\n\n"
+            f"Бесплатных генераций: {free_left}\n"
+            f"Баланс: {paid_credits} ₽\n\n"
+            f"Стоимость:\n"
+            f"5 секунд — {VIDEO_PRICES['5']} ₽\n"
+            f"10 секунд — {VIDEO_PRICES['10']} ₽\n"
+        )
+        return
+
+    if prompt == "🆘 Связаться с поддержкой":
+        await update.message.reply_text(
+            "🆘 Написать в поддержку: https://t.me/Vlad101ss",
+            disable_web_page_preview=True
+        )
+        return
+
+    if prompt in ["5 секунд", "10 секунд"]:
+        if user_id not in user_states:
+            await update.message.reply_text("Сначала отправь картинку.")
+            return
+
+        free_used, paid_credits = get_user(user_id)
+        selected_duration = prompt.replace(" секунд", "")
+        selected_cost = VIDEO_PRICES[selected_duration]
+
+        if free_used >= 1 and paid_credits < selected_cost:
+            await update.message.reply_text(
+                "💳Недостаточно средств для генерации.\n\n"
+                "👇Пополнить баланс или получить БЕСПЛАТНО👇"
+            )
+
+            await update.message.reply_text(
+                "Меню бота",
+                reply_markup=inline_menu()
+            )
+            return
+
+        user_states[user_id]["duration"] = selected_duration
+
+        await update.message.reply_text("✍️ Теперь отправь описание видео.")
+        return
+
+    if user_id not in user_states:
+        await update.message.reply_text("Сначала отправь картинку.")
+        return
+
+    if "duration" not in user_states[user_id]:
+        await update.message.reply_text(
+            "Сначала выбери длительность видео:",
+            reply_markup=duration_menu()
+        )
+        return
+
+    free_used, paid_credits = get_user(user_id)
+
+    image_path = user_states[user_id]["image_path"]
+    duration = user_states[user_id]["duration"]
+    video_cost = VIDEO_PRICES[duration]
+
+    if free_used >= 1 and paid_credits < video_cost:
+        await update.message.reply_text(
+            f"Баланс: {paid_credits} ₽"
+        )
+
+        await update.message.reply_text(
+            "💳Недостаточно средств для генерации.\n\n"
+            "👇Пополнить баланс или получить БЕСПЛАТНО👇"
+        )
+
+        await update.message.reply_text(
+            "Меню бота",
+            reply_markup=inline_menu()
+        )
+        return
+
+    await update.message.reply_text(
+        "🎥 Запускаю нейросеть.\n\n"
+        "Генерация видео может занять 2–10 минут. Не отправляй новую картинку, пока я работаю."
+    )
+
     try:
-        image_url = upload_image_to_kie(state["image_path"])
-        task_id = create_kie_image_to_video_task(image_url, state["prompt"], duration)
-        decrement_paid_credit(user_id, cost)
-        add_generation_stats(user_id, cost)
-        result_url = wait_kie_result(task_id)
-        video_path = download_file(result_url, user_id, "mp4")
-        with open(video_path, "rb") as video_file:
-            await update.message.reply_video(video=video_file, caption="✅ Готово! Вот твоё AI-видео.", read_timeout=3600, write_timeout=3600, connect_timeout=60, pool_timeout=3600)
-        await update.message.reply_text(f"💰 Баланс: {get_balance(user_id)} ₽", reply_markup=main_inline_menu())
+        video_path = generate_video_from_image(image_path, prompt, user_id, duration)
+
+        decrement_paid_credit(user_id, video_cost)
+        apply_referral_bonus(user_id, duration)
+
+        try:
+            with open(video_path, "rb") as video_file:
+                await update.message.reply_video(
+                    video=video_file,
+                    caption="✅ Готово! Вот твоё AI-видео.",
+                    read_timeout=3600,
+                    write_timeout=3600,
+                    connect_timeout=60,
+                    pool_timeout=3600
+                )
+        except Exception:
+            await update.message.reply_text(
+                "⚠️ Видео было сгенерировано, но Telegram не смог его отправить.\n\n"
+                "Напиши в поддержку:\n"
+                "https://t.me/Vlad101ss",
+                disable_web_page_preview=True
+            )
+
+        free_used_after, paid_credits_after = get_user(user_id)
+
+        await update.message.reply_text(
+            f"Баланс: {paid_credits_after} ₽"
+        )
+
+        if paid_credits_after <= 0:
+            await update.message.reply_text(
+                "💳Недостаточно средств для генерации.\n\n"
+                "👇Пополнить баланс или получить БЕСПЛАТНО👇"
+            )
+
+            await update.message.reply_text(
+                "Меню бота",
+                reply_markup=inline_menu()
+            )
+
     except Exception as e:
-        await handle_generation_exception(update, e)
+        import traceback
+        print("GENERATION_ERROR:", repr(e))
+        traceback.print_exc()
+
+        error_text = str(e).lower()
+
+        if (
+            "internal error" in error_text
+            or "try again later" in error_text
+            or "kie не смог" in error_text
+            or "timeout" in error_text
+        ):
+            await update.message.reply_text(
+                "⚠️ Нейросеть временно перегружена или не смогла обработать запрос.\n\n"
+                "Попробуй ещё раз через 1–2 минуты или немного измени описание видео."
+            )
+        else:
+            await update.message.reply_text(
+                "❌ Произошла ошибка генерации.\n\n"
+                "Если проблема повторяется — напиши в поддержку:\n"
+                "https://t.me/Vlad101ss",
+                disable_web_page_preview=True
+            )
+
     user_states.pop(user_id, None)
 
-
-async def run_text_to_video(update: Update, user_id: int):
-    state = user_states[user_id]
-    duration = state["duration"]
-    cost = VIDEO_PRICES[duration]
-    if get_balance(user_id) < cost:
-        await update.message.reply_text(f"💳 Недостаточно средств.\n\nБаланс: {get_balance(user_id)} ₽\nСтоимость: {cost} ₽", reply_markup=main_inline_menu())
-        user_states.pop(user_id, None)
-        return
-    await update.message.reply_text("🎥 Запускаю нейросеть.\n\nГенерация может занять 2–10 минут. Не отправляй новый запрос, пока я работаю.")
-    try:
-        task_id = create_kie_text_to_video_task(state["prompt"], duration)
-        decrement_paid_credit(user_id, cost)
-        add_generation_stats(user_id, cost)
-        result_url = wait_kie_result(task_id)
-        video_path = download_file(result_url, user_id, "mp4")
-        with open(video_path, "rb") as video_file:
-            await update.message.reply_video(video=video_file, caption="✅ Готово! Вот твоё AI-видео.", read_timeout=3600, write_timeout=3600, connect_timeout=60, pool_timeout=3600)
-        await update.message.reply_text(f"💰 Баланс: {get_balance(user_id)} ₽", reply_markup=main_inline_menu())
-    except Exception as e:
-        await handle_generation_exception(update, e)
-    user_states.pop(user_id, None)
+async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "💳 Пополнение баланса:\n\n"
+        "Стоимость генераций:\n"
+        "5 секунд — 98 ₽\n"
+        "10 секунд — 147 ₽\n"
+        "Выбери сумму пополнения:",
+        reply_markup=topup_menu()
+    )
 
 
-async def run_text_to_image(update: Update, user_id: int):
-    if get_balance(user_id) < IMAGE_PRICE:
-        await update.message.reply_text(f"💳 Недостаточно средств.\n\nБаланс: {get_balance(user_id)} ₽\nСтоимость: {IMAGE_PRICE} ₽", reply_markup=main_inline_menu())
-        user_states.pop(user_id, None)
-        return
-    await update.message.reply_text("🖼 Запускаю генерацию картинки.\n\nОбычно это занимает 1–3 минуты.")
-    try:
-        task_id = create_kie_image_task(user_states[user_id]["prompt"])
-        decrement_paid_credit(user_id, IMAGE_PRICE)
-        add_generation_stats(user_id, IMAGE_PRICE)
-        result_url = wait_kie_result(task_id)
-        image_path = download_file(result_url, user_id, "jpg")
-        with open(image_path, "rb") as image_file:
-            await update.message.reply_photo(photo=image_file, caption="✅ Готово! Вот твоё изображение.")
-        await update.message.reply_text(f"💰 Баланс: {get_balance(user_id)} ₽", reply_markup=main_inline_menu())
-    except Exception as e:
-        await handle_generation_exception(update, e)
-    user_states.pop(user_id, None)
+async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.pre_checkout_query
+    await query.answer(ok=True)
 
 
-async def handle_generation_exception(update: Update, e: Exception):
-    import traceback
-    print("GENERATION_ERROR:", repr(e), flush=True)
-    traceback.print_exc()
-    error_text = str(e).lower()
-    if "kie_422_input_rejected" in error_text or "422" in error_text or "please try again" in error_text or "change your input files or prompt" in error_text:
-        await update.message.reply_text(kie_422_text())
-        return
-    if "internal error" in error_text or "try again later" in error_text or "timeout" in error_text or "temporarily" in error_text:
-        await update.message.reply_text("⚠️ Нейросеть временно перегружена или не смогла обработать запрос.\n\nПопробуй ещё раз через 1–2 минуты или немного измени описание.")
-        return
-    await update.message.reply_text(f"❌ Произошла ошибка генерации.\n\nЕсли проблема повторяется — напиши в поддержку:\n{SUPPORT_URL}", disable_web_page_preview=True)
+async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    payload = update.message.successful_payment.invoice_payload
 
+    if payload.startswith("topup_"):
+        amount = int(payload.replace("topup_", ""))
+        add_paid_credit(user_id, amount)
+
+        _, paid_credits = get_user(user_id)
+
+        await update.message.reply_text(
+            f"✅ Баланс пополнен на {amount} ₽.\n\n"
+            f"Текущий баланс: {paid_credits} ₽.\n\n"
+            f"Теперь отправь картинку."
+        )
 
 def main():
     init_db()
+
     app = (
-        ApplicationBuilder()
-        .token(TELEGRAM_TOKEN)
-        .connect_timeout(60)
-        .read_timeout(3600)
-        .write_timeout(3600)
-        .pool_timeout(3600)
-        .build()
-    )
+    ApplicationBuilder()
+    .token(TELEGRAM_TOKEN)
+    .connect_timeout(60)
+    .read_timeout(3600)
+    .write_timeout(3600)
+    .pool_timeout(3600)
+    .build()
+)
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CommandHandler("buy", buy))
     app.add_handler(CommandHandler("myid", myid))
     app.add_handler(CommandHandler("give", give))
     app.add_handler(CommandHandler("giveuser", giveuser))
-    app.add_handler(CommandHandler("statsuser", statsuser))
+    app.add_handler(CommandHandler("partners", partners))
+    app.add_handler(CommandHandler("paypartner", paypartner))
     app.add_handler(CallbackQueryHandler(menu_button))
+    app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    print("Бот Xena 2.0 запущен...", flush=True)
+
+    print("Бот запущен...")
     app.run_polling()
 
 
-if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+if __name__ == "__main__":    
     main()
-
