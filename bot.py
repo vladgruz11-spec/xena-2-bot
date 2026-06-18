@@ -1373,7 +1373,7 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             f"🎁 БЕСПЛАТНЫЕ генерации\n\n"
             f"Твоя ссылка:\n"
-            f"https://t.me/Xena18Bot?start=free_{user_id}"
+            f"https://t.me/Xena20Bot?start=free_{user_id}"
         )
         return
 
@@ -1381,7 +1381,7 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             f"💸 ЗАРАБОТАТЬ с Xena\n\n"
             f"Твоя ссылка:\n"
-            f"https://t.me/Xena18Bot?start=money_{user_id}"
+            f"https://t.me/Xena20Bot?start=money_{user_id}"
         )
         return
 
