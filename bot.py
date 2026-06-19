@@ -553,7 +553,7 @@ async def send_main_menu(chat):
     await chat.reply_photo(
         photo=MAIN_MENU_PHOTO,
         caption=(
-            f"Наш канал(ГАЛЕРЕЯ+ПРОМПТЫ):\n{MAIN_CHANNEL_URL}\n"
+            f"Наш канал (ГАЛЕРЕЯ+ПРОМПТЫ):\n{MAIN_CHANNEL_URL}\n"
             f"Подпишись, чтобы нас не потерять!"
         ),
         reply_markup=main_inline_menu()
