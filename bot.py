@@ -1012,7 +1012,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🎁 Реферальную программу подключим следующим этапом.")
         return
 
-    if prompt == "🚀 Запустить бота":
+if prompt == "🚀 Запустить бота":
     await send_main_menu(update.message)
     return
 
