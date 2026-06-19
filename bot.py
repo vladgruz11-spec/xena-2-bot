@@ -937,7 +937,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             "Меню бота",
-            reply_markup=inline_menu()
+            reply_markup=main_inline_menu()
         )
         return
 
@@ -949,7 +949,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             "Меню бота",
-            reply_markup=inline_menu()
+            reply_markup=main_inline_menu()
         )
         return
 
