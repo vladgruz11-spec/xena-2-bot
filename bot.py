@@ -550,7 +550,7 @@ def generate_video_from_image(image_path: str, prompt: str, user_id: int, durati
     return video_path
 
 async def send_main_menu(chat):
-    await chat.reply_photo(
+    await chat.send_photo(
         photo=MAIN_MENU_PHOTO,
         caption=(
             f"Наш канал (ГАЛЕРЕЯ+ПРОМПТЫ):\n{MAIN_CHANNEL_URL}\n"
