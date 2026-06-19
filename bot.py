@@ -549,15 +549,24 @@ def generate_video_from_image(image_path: str, prompt: str, user_id: int, durati
     video_path = download_video(video_url, user_id)
     return video_path
 
-async def send_main_menu(chat):
-    await chat.send_photo(
-        photo=MAIN_MENU_PHOTO,
-        caption=(
-            f"Наш канал (ГАЛЕРЕЯ+ПРОМПТЫ):\n{MAIN_CHANNEL_URL}\n"
-            f"Подпишись, чтобы нас не потерять!"
-        ),
-        reply_markup=main_inline_menu()
+async def send_main_menu(target):
+    caption = (
+        f"Наш канал (ГАЛЕРЕЯ+ПРОМПТЫ):\n{MAIN_CHANNEL_URL}\n"
+        f"Подпишись, чтобы нас не потерять!"
     )
+
+    if hasattr(target, "reply_photo"):
+        await target.reply_photo(
+            photo=MAIN_MENU_PHOTO,
+            caption=caption,
+            reply_markup=main_inline_menu()
+        )
+    else:
+        await target.send_photo(
+            photo=MAIN_MENU_PHOTO,
+            caption=caption,
+            reply_markup=main_inline_menu()
+        )
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_main_menu(update.message)
