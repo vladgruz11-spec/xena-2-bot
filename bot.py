@@ -840,16 +840,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if ref_code.startswith("money_"):
             referrer_id = int(ref_code.replace("money_", ""))
             set_referrer(user_id, referrer_id, "money")
-    
-    await update.message.reply_text(
-        "Шаг 1: Перед тем как начать, подпишись на канал https://t.me/Xena18H, чтобы нас не потерять, если бота заблокируют!\n\n"
-        "Затем возвращайся, и приступим к СОЗДАНИЮ ВИДЕО",
-        disable_web_page_preview=True
-    )
 
-    await update.message.reply_text(
-        "Шаг 2: отправь мне картинку, которую хочешь оживить!"
-    )
+    await send_main_menu(update.message)
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
