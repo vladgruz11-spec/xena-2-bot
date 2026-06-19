@@ -38,6 +38,8 @@ MEDIA_DIR = Path("media")
 MEDIA_DIR.mkdir(exist_ok=True)
 
 DB_PATH = "/var/data/users.db"
+MAIN_MENU_PHOTO = "https://raw.githubusercontent.com/vladgruz11-spec/xena-2-bot/main/assets/main_menu.jpg"
+MAIN_CHANNEL_URL = "https://t.me/Xena18H"
 user_states = {}
 
 ADMIN_IDS = {
