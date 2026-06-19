@@ -1014,8 +1014,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if prompt == "🚀 Запустить бота":
-        await menu(update, context)
-        return
+    await send_main_menu(update.message)
+    return
 
     if prompt == "📘 Инструкция: /help":
         await update.message.reply_text(
