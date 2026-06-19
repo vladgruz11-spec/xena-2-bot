@@ -561,10 +561,7 @@ async def send_main_menu(chat):
     )
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Меню бота",
-        reply_markup=inline_menu()
-    )
+    await send_main_menu(update.message)
 
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
