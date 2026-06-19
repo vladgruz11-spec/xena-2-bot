@@ -711,6 +711,15 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     action = query.data
 
+    try:
+        await query.message.delete()
+    except:
+        pass
+
+    if action == "main_menu":
+        await send_main_menu(query.message.chat)
+        return
+
     if action.startswith("checkpay_"):
         parts = action.split("_")
         payment_id = parts[1]
@@ -719,110 +728,181 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             paid = check_yookassa_payment(payment_id)
         except Exception as e:
-            await query.message.reply_text(
-                f"❌ Не удалось проверить оплату:\n\n{e}"
+            await query.message.chat.send_message(
+                f"❌ Не удалось проверить оплату:\n\n{e}",
+                reply_markup=back_to_menu_keyboard()
             )
             return
 
         if not paid:
-            await query.message.reply_text(
+            await query.message.chat.send_message(
                 "⏳ Оплата пока не найдена.\n\n"
-                "Если ты уже оплатил — подожди 10–20 секунд и нажми кнопку ещё раз."
+                "Если ты уже оплатил — подожди 10–20 секунд и нажми кнопку ещё раз.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")],
+                    [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+                ])
             )
             return
 
         add_paid_credit(user_id, amount)
         _, paid_credits = get_user(user_id)
 
-        await query.message.reply_text(
+        await query.message.chat.send_message(
             f"✅ Оплата получена!\n\n"
             f"Баланс пополнен на {amount} ₽.\n"
-            f"Текущий баланс: {paid_credits} ₽.\n\n"
-            f"Теперь отправь картинку."
+            f"Текущий баланс: {paid_credits} ₽.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    if action.startswith("topup_"):
+        amount = int(action.replace("topup_", ""))
+
+        payment_url, payment_id = create_yookassa_payment(user_id, amount)
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💳 Оплатить", url=payment_url)],
+            [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        ])
+
+        await query.message.chat.send_message(
+            f"💳 Пополнение баланса на {amount} ₽\n\n"
+            f"1. Нажми «Оплатить»\n"
+            f"2. После оплаты вернись сюда\n"
+            f"3. Нажми «✅ Проверить оплату»",
+            reply_markup=keyboard
         )
         return
 
     if action == "buy":
-        await query.message.reply_text(
-            "💳 Пополнение баланса:\n\n"
-            "Стоимость генераций:\n"
-            "5 секунд — 98 ₽\n"
-            "10 секунд — 147 ₽\n"
-            "Выбери сумму пополнения:",
-            reply_markup=topup_menu()
+        await query.message.chat.send_message(
+            "💳 Выберите сумму пополнения:",
+            reply_markup=topup_inline_menu()
+        )
+        return
+
+    if action == "profile":
+        free_used, paid_credits = get_user(user_id)
+
+        await query.message.chat.send_message(
+            f"👤 Твой баланс:\n\n"
+            f"Баланс: {paid_credits} ₽\n\n"
+            f"Стоимость сейчас:\n"
+            f"5 секунд — {VIDEO_PRICES['5']} ₽\n"
+            f"10 секунд — {VIDEO_PRICES['10']} ₽",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    if action == "partner":
+        await query.message.chat.send_message(
+            "🤝 Партнерка\n\n"
+            "За каждого приведенного вами активного пользователя вы можете получать "
+            "ДЕНЬГИ или БЕСПЛАТНЫЕ ГЕНЕРАЦИИ на ваш выбор.",
+            reply_markup=back_to_partner_keyboard()
         )
         return
 
     if action == "ref":
-        await query.message.reply_text(
-            f"🎁 БЕСПЛАТНЫЕ генерации\n\n"
-            f"Приглашай друзей и получай бонусы:\n"
-            f"• друг сделал платный ролик 5 сек — тебе +98 ₽ на баланс\n"
-            f"• друг сделал платный ролик 10 сек — тебе +147 ₽ на баланс\n\n"
+        await query.message.chat.send_message(
+            f"🎁 Бесплатные генерации\n\n"
+            f"Приглашай друзей и получай бонусы на баланс.\n\n"
             f"Твоя ссылка:\n"
-            f"https://t.me/Xena18Bot?start=free_{user_id}"
+            f"https://t.me/Xena18Bot?start=free_{user_id}",
+            reply_markup=back_to_menu_keyboard()
         )
         return
 
     if action == "earn":
-        await query.message.reply_text(
-            f"💸 ЗАРАБОТАТЬ с Xena\n\n"
-            f"Приглашай людей и получай деньги на партнёрский счёт:\n"
-            f"• за платную генерацию 5 сек — 50 ₽\n"
-            f"• за платную генерацию 10 сек — 100 ₽\n\n"
+        await query.message.chat.send_message(
+            f"💸 Заработать с Xena\n\n"
+            f"Приглашай людей и получай деньги на партнёрский счёт.\n\n"
             f"Твоя ссылка:\n"
-            f"https://t.me/Xena18Bot?start=money_{user_id}"
+            f"https://t.me/Xena18Bot?start=money_{user_id}",
+            reply_markup=back_to_menu_keyboard()
         )
         return
 
     if action == "partner_profile":
         partner_balance = get_partner_balance(user_id)
 
-        await query.message.reply_text(
-            f"💼 Кабинет партнёра\n\n"
+        await query.message.chat.send_message(
+            f"💼 Кабинет партнера\n\n"
             f"Баланс к выплате: {partner_balance} ₽\n\n"
-            f"Когда хочешь получить выплату — напиши в поддержку."
+            f"Когда хочешь получить выплату — напиши в поддержку.",
+            reply_markup=back_to_menu_keyboard()
         )
-        return
-
-    if action == "start":
-        await start(query, context)
         return
 
     if action == "help":
-        await query.message.reply_text(
-            "📘 Инструкция:\n\n"
-            "1. Отправьте картинку.\n"
-            "Если хотите оживить человека, отправляйте фото, на котором будет хорошо видно лицо.\n"
-            "2. Выберите длительность видео.\n"
-            "На данный момент оптимальная длительность 5-10 секунд, дальше нейросеть начинает искажать происходящее, теряется качество и реалистичность.\n"
-            "Более длительные AI ролики сейчас создают обьединяя много коротких роликов в один большой, используя последние кадры для сознания продолжения\n"
-            "3. Составьте описание видео.\n"
-            "Пишите очень подробно, что бы вы хотели видеть\n"
-            "4. Дождись готового AI-видео.\n"
-            "Нажимая старт, вы соглашаетесь с правилами использования бота, а именно:\n"
-            "а) Запрещается использовать бот для создания с целью распространения контента, нарушающего законодательство или права третьих лиц, включая:\n"
-            "незаконный контент\n"
-            "материалы сексуального характера с несовершеннолетними\n"
-            "экстремизм, терроризм, разжигание ненависти\n"
-            "мошенничество и введение в заблуждение\n"
-            "клевету и нарушение репутации\n"
-            "незаконное использование чужих изображений, лиц или авторских материалов\n"
-            "б) Бот является автоматическим инструментом генерации контента. Ответственность за использование результатов несёт пользователь."
+        await query.message.chat.send_message(
+            "📘 Инструкция\n\n"
+            "1. Выбери, что хочешь создать: видео, изображение или аудио.\n"
+            "2. Выбери нейросеть или режим генерации.\n"
+            "3. Отправь фото, текст или другой материал, если бот попросит.\n"
+            "4. Опиши результат простыми словами.\n"
+            "5. Дождись готового результата.\n\n"
+            "Не нужно разбираться в нейросетях — бот сам проведет тебя по шагам.",
+            reply_markup=back_to_menu_keyboard()
         )
         return
 
-    if action == "profile":
-        free_used, paid_credits = get_user(user_id)
-        free_left = max(0, 1 - free_used)
+    if action == "create_video":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎬 Фото → Видео", callback_data="video_image_to_video")],
+            [InlineKeyboardButton("🎥 Текст → Видео", callback_data="video_text_to_video")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        ])
 
-        await query.message.reply_text(
-            f"👤 Твой баланс:\n\n"
-            f"Бесплатных генераций: {free_left}\n"
-            f"Баланс: {paid_credits} ₽\n\n"
-            f"Стоимость:\n"
-            f"5 секунд — {VIDEO_PRICES['5']} ₽\n"
-            f"10 секунд — {VIDEO_PRICES['10']} ₽"
+        await query.message.chat.send_message(
+            "🎬 Создание видео\n\n"
+            "Выбери режим генерации:",
+            reply_markup=keyboard
+        )
+        return
+
+    if action == "create_image":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🖼 Текст → Изображение", callback_data="image_text_to_image")],
+            [InlineKeyboardButton("🖼 Фото → Изображение", callback_data="image_image_to_image")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        ])
+
+        await query.message.chat.send_message(
+            "🖼 Создание изображения\n\n"
+            "Выбери режим генерации:",
+            reply_markup=keyboard
+        )
+        return
+
+    if action == "create_audio":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎵 Текст → Аудио", callback_data="audio_text_to_audio")],
+            [InlineKeyboardButton("🎙 Голос/звук → Аудио", callback_data="audio_reference")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        ])
+
+        await query.message.chat.send_message(
+            "🎵 Создание аудио\n\n"
+            "Выбери режим генерации:",
+            reply_markup=keyboard
+        )
+        return
+
+    if action in [
+        "video_image_to_video",
+        "video_text_to_video",
+        "image_text_to_image",
+        "image_image_to_image",
+        "audio_text_to_audio",
+        "audio_reference"
+    ]:
+        await query.message.chat.send_message(
+            "⚙️ Этот режим сейчас подключаем.\n\n"
+            "Следующим этапом выберем для него нейросеть Kie и настроим генерацию.",
+            reply_markup=back_to_menu_keyboard()
         )
         return
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
