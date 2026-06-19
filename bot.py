@@ -81,15 +81,15 @@ def duration_menu_5_only():
         keyboard,
         resize_keyboard=True
     )
-def topup_menu():
+def topup_inline_menu():
     keyboard = [
-        ["💳 Пополнить баланс на 196 ₽"],
-        ["💳 Пополнить баланс на 343 ₽"],
-        ["💳 Пополнить баланс на 490 ₽"],
-        ["🚀 Запустить бота"]
+        [InlineKeyboardButton("250 ₽", callback_data="topup_250")],
+        [InlineKeyboardButton("500 ₽", callback_data="topup_500")],
+        [InlineKeyboardButton("1000 ₽", callback_data="topup_1000")],
+        [InlineKeyboardButton("5000 ₽", callback_data="topup_5000")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
     ]
-
-    return ReplyKeyboardMarkup(
+    return InlineKeyboardMarkup(keyboard)
         keyboard,
         resize_keyboard=True
     )
