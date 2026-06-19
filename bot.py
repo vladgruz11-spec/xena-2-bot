@@ -90,9 +90,8 @@ def topup_inline_menu():
         [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)
-        keyboard,
-        resize_keyboard=True
-    )
+
+
 def main_inline_menu():
     keyboard = [
         [InlineKeyboardButton("🎬 Создать ВИДЕО", callback_data="create_video")],
