@@ -93,19 +93,33 @@ def topup_inline_menu():
         keyboard,
         resize_keyboard=True
     )
-def inline_menu():
+def main_inline_menu():
     keyboard = [
-        [InlineKeyboardButton("💳 Пополнить баланс", callback_data="buy")],
-        [InlineKeyboardButton("🎁 БЕСПЛАТНЫЕ генерации", callback_data="ref")],
-        [InlineKeyboardButton("💸 ЗАРАБОТАТЬ с Xena", callback_data="earn")],
-        [InlineKeyboardButton("💼 Кабинет партнёра", callback_data="partner_profile")],
-        [InlineKeyboardButton("🚀 Запустить бота", callback_data="start")],
-        [InlineKeyboardButton("📘 Инструкция", callback_data="help")],
+        [InlineKeyboardButton("🎬 Создать ВИДЕО", callback_data="create_video")],
+        [InlineKeyboardButton("🖼 Создать ИЗОБРАЖЕНИЕ", callback_data="create_image")],
+        [InlineKeyboardButton("🎵 Создать АУДИО", callback_data="create_audio")],
+        [InlineKeyboardButton("💳 ПОПОЛНИТЬ БАЛАНС", callback_data="buy")],
         [InlineKeyboardButton("👤 Мой баланс", callback_data="profile")],
-        [InlineKeyboardButton("🆘 Связаться с поддержкой", url="https://t.me/Vlad101ss")]
+        [InlineKeyboardButton("🤝 Партнерка", callback_data="partner")],
+        [InlineKeyboardButton("💼 Кабинет партнера", callback_data="partner_profile")],
+        [InlineKeyboardButton("📘 Инструкция", callback_data="help")],
+        [InlineKeyboardButton("🆘 Поддержка", url="https://t.me/Vlad101ss")]
     ]
-
     return InlineKeyboardMarkup(keyboard)
+
+
+def back_to_menu_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+    ])
+
+
+def back_to_partner_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎁 Бесплатные генерации", callback_data="ref")],
+        [InlineKeyboardButton("💸 Заработать", callback_data="earn")],
+        [InlineKeyboardButton("⬅ Назад", callback_data="main_menu")]
+    ])
 def add_paid_credit(user_id: int, amount: int = 1):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
