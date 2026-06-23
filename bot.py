@@ -934,13 +934,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
         ref_code = context.args[0]
 
-        if ref_code.startswith("free_"):
-            referrer_id = int(ref_code.replace("free_", ""))
-            set_referrer(user_id, referrer_id, "free")
-
-        if ref_code.startswith("money_"):
-            referrer_id = int(ref_code.replace("money_", ""))
-            set_referrer(user_id, referrer_id, "money")
+        if ref_code.startswith("partner_"):
+            referrer_id = int(ref_code.replace("partner_", ""))
+            set_referrer(user_id, referrer_id, "bonus")
 
     await send_main_menu(update.message)
 
