@@ -818,30 +818,17 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "partner":
+        bot_info = await context.bot.get_me()
+        bot_username = bot_info.username
+
         await query.message.chat.send_message(
             "🤝 Партнерка\n\n"
-            "За каждого приведенного вами активного пользователя вы можете получать "
-            "ДЕНЬГИ или БЕСПЛАТНЫЕ ГЕНЕРАЦИИ на ваш выбор.",
-            reply_markup=back_to_partner_keyboard()
-        )
-        return
-
-    if action == "ref":
-        await query.message.chat.send_message(
-            f"🎁 Бесплатные генерации\n\n"
-            f"Приглашай друзей и получай бонусы на баланс.\n\n"
-            f"Твоя ссылка:\n"
-            f"https://t.me/Xena18Bot?start=free_{user_id}",
-            reply_markup=back_to_menu_keyboard()
-        )
-        return
-
-    if action == "earn":
-        await query.message.chat.send_message(
-            f"💸 Заработать с Xena\n\n"
-            f"Приглашай людей и получай деньги на партнёрский счёт.\n\n"
-            f"Твоя ссылка:\n"
-            f"https://t.me/Xena18Bot?start=money_{user_id}",
+            "За каждого приведенного вами активного пользователя вы будете получать бонусы "
+            "(70% от каждого его депозита) на свой бонусный счет.\n\n"
+            "Заработанные бонусы вы сможете тратить на генерации.\n\n"
+            "Информация о количестве бонусов будет отображаться в разделе «Кабинет партнера».\n\n"
+            f"Ваша реферальная ссылка:\n"
+            f"https://t.me/{bot_username}?start=partner_{user_id}",
             reply_markup=back_to_menu_keyboard()
         )
         return
@@ -851,8 +838,10 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.message.chat.send_message(
             f"💼 Кабинет партнера\n\n"
-            f"Баланс к выплате: {partner_balance} ₽\n\n"
-            f"Когда хочешь получить выплату — напиши в поддержку.",
+            f"Бонусный счет: {partner_balance} бонусов\n\n"
+            f"1 бонус = 1 ₽.\n\n"
+            f"В дальнейшем перед генерацией можно будет выбрать способ оплаты: "
+            f"деньгами или бонусами.",
             reply_markup=back_to_menu_keyboard()
         )
         return
