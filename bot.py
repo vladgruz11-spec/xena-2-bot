@@ -1223,6 +1223,7 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     if payload.startswith("topup_"):
         amount = int(payload.replace("topup_", ""))
         add_paid_credit(user_id, amount)
+        apply_deposit_bonus(user_id, amount)
 
         _, paid_credits = get_user(user_id)
 
