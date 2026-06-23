@@ -325,6 +325,19 @@ def get_partner_balance(user_id: int):
 
     return row[0] or 0
 
+def apply_deposit_bonus(user_id: int, amount: int):
+    referrer_id, ref_mode = get_referrer(user_id)
+
+    if not referrer_id:
+        return
+
+    bonus = int(amount * 0.7)
+
+    if bonus <= 0:
+        return
+
+    add_partner_money(referrer_id, bonus)
+
 def apply_referral_bonus(user_id: int, duration: str):
     referrer_id, ref_mode = get_referrer(user_id)
 
