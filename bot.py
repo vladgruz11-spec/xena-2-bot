@@ -767,6 +767,7 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         add_paid_credit(user_id, amount)
+        apply_deposit_bonus(user_id, amount)
         _, paid_credits = get_user(user_id)
 
         await query.message.chat.send_message(
