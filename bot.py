@@ -903,14 +903,16 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "seedance_text_video":
+        keyboard = navigation_keyboard([
+            [InlineKeyboardButton("📱 Формат 9:16", callback_data="text_video_format_9_16")],
+            [InlineKeyboardButton("🖥 Формат 16:9", callback_data="text_video_format_16_9")],
+            [InlineKeyboardButton("⬜ Формат 1:1", callback_data="text_video_format_1_1")]
+        ], back_callback="create_video")
+
         await query.message.chat.send_message(
             "🎥 Текст → Видео\n\n"
-            "Этот режим будет работать через Seedance 2.0.\n\n"
-            "Следующим шагом подключим:\n"
-            "1. выбор длительности 5/10/15 сек\n"
-            "2. ввод описания\n"
-            "3. отправку задачи в Kie",
-            reply_markup=back_to_menu_keyboard(back_callback="create_video")
+            "Выбери формат видео:",
+            reply_markup=keyboard
         )
         return
 
