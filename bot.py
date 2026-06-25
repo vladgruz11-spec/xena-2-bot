@@ -1008,12 +1008,12 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "step": "waiting_prompt"
         }
 
-    await query.message.chat.send_message(
-        "✍️ Добавьте описание видео.\n\n"
-        "Напишите, что должно происходить в ролике.",
-        reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
-    )
-    return
+        await query.message.chat.send_message(
+            "✍️ Добавьте описание видео.\n\n"
+            "Напишите, что должно происходить в ролике.",
+            reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+        )
+        return
 
     if action == "seedance_image_video":
         await query.message.chat.send_message(
