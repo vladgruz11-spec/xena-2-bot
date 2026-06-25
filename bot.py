@@ -117,6 +117,61 @@ def navigation_keyboard(buttons, back_callback="main_menu"):
     buttons.append([InlineKeyboardButton("🏠 ГЛАВНОЕ МЕНЮ", callback_data="main_menu")])
     return InlineKeyboardMarkup(buttons)
 
+def video_settings_menu(mode):
+    keyboard = [
+        [InlineKeyboardButton("🖼 Первый кадр", callback_data=f"{mode}_first_frame")],
+        [InlineKeyboardButton("🖼 Последний кадр", callback_data=f"{mode}_last_frame")],
+        [InlineKeyboardButton("✍️ Промпт", callback_data=f"{mode}_prompt")],
+        [InlineKeyboardButton("🖼 Референс картинки", callback_data=f"{mode}_ref_images")],
+        [InlineKeyboardButton("🎬 Референс видео", callback_data=f"{mode}_ref_videos")],
+        [InlineKeyboardButton("🎵 Референс аудио", callback_data=f"{mode}_ref_audio")],
+        [InlineKeyboardButton("🔊 AI звук", callback_data=f"{mode}_audio_settings")],
+        [InlineKeyboardButton("📺 Разрешение", callback_data=f"{mode}_resolution")],
+        [InlineKeyboardButton("📐 Формат видео", callback_data=f"{mode}_aspect_ratio")],
+        [InlineKeyboardButton("⏱ Длительность", callback_data=f"{mode}_duration")],
+        [InlineKeyboardButton("✅ Продолжить", callback_data=f"{mode}_continue")]
+    ]
+    return navigation_keyboard(keyboard, back_callback="create_video")
+
+
+def resolution_menu(mode):
+    keyboard = [
+        [InlineKeyboardButton("480p", callback_data=f"{mode}_resolution_480p")],
+        [InlineKeyboardButton("720p", callback_data=f"{mode}_resolution_720p")],
+        [InlineKeyboardButton("1080p", callback_data=f"{mode}_resolution_1080p")],
+        [InlineKeyboardButton("4K", callback_data=f"{mode}_resolution_4k")]
+    ]
+    return navigation_keyboard(keyboard, back_callback=f"{mode}_settings")
+
+
+def aspect_ratio_menu(mode):
+    keyboard = [
+        [InlineKeyboardButton("16:9", callback_data=f"{mode}_aspect_16_9")],
+        [InlineKeyboardButton("4:3", callback_data=f"{mode}_aspect_4_3")],
+        [InlineKeyboardButton("1:1", callback_data=f"{mode}_aspect_1_1")],
+        [InlineKeyboardButton("3:4", callback_data=f"{mode}_aspect_3_4")],
+        [InlineKeyboardButton("9:16", callback_data=f"{mode}_aspect_9_16")],
+        [InlineKeyboardButton("21:9", callback_data=f"{mode}_aspect_21_9")]
+    ]
+    return navigation_keyboard(keyboard, back_callback=f"{mode}_settings")
+
+
+def duration_settings_menu(mode):
+    keyboard = [
+        [InlineKeyboardButton("5 секунд", callback_data=f"{mode}_duration_5")],
+        [InlineKeyboardButton("10 секунд", callback_data=f"{mode}_duration_10")],
+        [InlineKeyboardButton("15 секунд", callback_data=f"{mode}_duration_15")]
+    ]
+    return navigation_keyboard(keyboard, back_callback=f"{mode}_settings")
+
+
+def audio_settings_menu(mode):
+    keyboard = [
+        [InlineKeyboardButton("🔊 Включить AI звук", callback_data=f"{mode}_audio_on")],
+        [InlineKeyboardButton("🔇 Без AI звука", callback_data=f"{mode}_audio_off")]
+    ]
+    return navigation_keyboard(keyboard, back_callback=f"{mode}_settings")
+
 
 def back_to_partner_keyboard():
     return InlineKeyboardMarkup([
