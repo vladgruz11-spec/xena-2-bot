@@ -936,6 +936,14 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if action == "model_seedance_2":
+        await query.message.chat.send_message(
+            "🎬 Seedance 2.0\n\n"
+            "Настрой параметры генерации:",
+            reply_markup=video_settings_menu("seedance_2")
+        )
+        return
+
     if action == "create_image":
         keyboard = navigation_keyboard([
             [InlineKeyboardButton("🖼 Текст → Изображение", callback_data="image_text_to_image")],
