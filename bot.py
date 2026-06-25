@@ -864,12 +864,11 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "create_video":
-        keyboard = InlineKeyboardMarkup([
+        keyboard = navigation_keyboard([
             [InlineKeyboardButton("🎥 Текст → Видео", callback_data="seedance_text_video")],
             [InlineKeyboardButton("🖼 Картинка → Видео", callback_data="seedance_image_video")],
-            [InlineKeyboardButton("🎬 Видео + Картинка + Текст", callback_data="seedance_full_video")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
-        ])
+            [InlineKeyboardButton("🎬 Видео + Картинка + Текст", callback_data="seedance_full_video")]
+        ], back_callback="main_menu")
 
         await query.message.chat.send_message(
             "🎬 Создание видео\n\n"
