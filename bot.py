@@ -958,44 +958,26 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "seedance_text_video":
-        keyboard = navigation_keyboard([
-            [InlineKeyboardButton("📱 Формат 9:16", callback_data="text_video_format_9_16")],
-            [InlineKeyboardButton("🖥 Формат 16:9", callback_data="text_video_format_16_9")],
-            [InlineKeyboardButton("⬜ Формат 1:1", callback_data="text_video_format_1_1")]
-        ], back_callback="create_video")
-
         await query.message.chat.send_message(
             "🎥 Текст → Видео\n\n"
-            "Выбери формат видео:",
-            reply_markup=keyboard
+            "Настрой параметры генерации:",
+            reply_markup=video_settings_menu("text_video")
         )
         return
 
     if action == "seedance_image_video":
-        keyboard = navigation_keyboard([
-            [InlineKeyboardButton("📱 Формат 9:16", callback_data="image_video_format_9_16")],
-            [InlineKeyboardButton("🖥 Формат 16:9", callback_data="image_video_format_16_9")],
-            [InlineKeyboardButton("⬜ Формат 1:1", callback_data="image_video_format_1_1")]
-        ], back_callback="create_video")
-
         await query.message.chat.send_message(
             "🖼 Картинка → Видео\n\n"
-            "Выбери формат видео:",
-            reply_markup=keyboard
+            "Настрой параметры генерации:",
+            reply_markup=video_settings_menu("image_video")
         )
-    return
+        return
 
     if action == "seedance_full_video":
-        keyboard = navigation_keyboard([
-            [InlineKeyboardButton("📱 Формат 9:16", callback_data="full_video_format_9_16")],
-            [InlineKeyboardButton("🖥 Формат 16:9", callback_data="full_video_format_16_9")],
-            [InlineKeyboardButton("⬜ Формат 1:1", callback_data="full_video_format_1_1")]
-        ], back_callback="create_video")
-
         await query.message.chat.send_message(
             "🎬 Картинка + Видео → Видео\n\n"
-            "Выбери формат видео:",
-            reply_markup=keyboard
+            "Настрой параметры генерации:",
+            reply_markup=video_settings_menu("full_video")
         )
         return
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
