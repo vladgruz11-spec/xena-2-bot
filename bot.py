@@ -947,6 +947,14 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if action == "back_seedance_2_settings":
+        await query.message.chat.send_message(
+            "🎬 Seedance 2.0\n\n"
+            "Настрой параметры генерации:",
+            reply_markup=video_settings_menu("seedance_2")
+        )
+        return
+
     if action == "seedance_2_aspect_ratio":
         await query.message.chat.send_message(
             "📐 Выбери формат видео:",
