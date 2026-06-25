@@ -1031,6 +1031,27 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ], back_callback="seedance_resolution_720p")
         )
         return
+
+    if action.startswith("seedance_duration_"):
+        if user_id not in user_states:
+            await query.message.chat.send_message(
+                "Сначала выберите режим генерации.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
+
+        duration = action.replace("seedance_duration_", "")
+        user_states[user_id]["duration"] = duration
+        user_states[user_id]["step"] = "ready_to_generate"
+
+        await query.message.chat.send_message(
+            "✅ Всё готово.\n\n"
+            "Нажмите кнопку ниже, чтобы создать видео.",
+            reply_markup=navigation_keyboard([
+                [InlineKeyboardButton("🎬 СОЗДАТЬ ВИДЕО", callback_data="seedance_generate")]
+            ], back_callback="seedance_aspect_9_16")
+        )
+        return
  
     if action == "create_image":
         keyboard = navigation_keyboard([
