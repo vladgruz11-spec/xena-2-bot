@@ -906,17 +906,41 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if action in [
-        "video_image_to_video",
-        "video_text_to_video",
-        "image_text_to_image",
-        "image_image_to_image",
-        "audio_text_to_audio",
-        "audio_reference"
-    ]:
+    if action == "seedance_text_video":
         await query.message.chat.send_message(
-            "⚙️ Этот режим сейчас подключаем.\n\n"
-            "Следующим этапом выберем для него нейросеть Kie и настроим генерацию.",
+            "🎥 Текст → Видео\n\n"
+            "Этот режим будет работать через Seedance 2.0.\n\n"
+            "Следующим шагом подключим:\n"
+            "1. выбор длительности 5/10/15 сек\n"
+            "2. ввод описания\n"
+            "3. отправку задачи в Kie",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    if action == "seedance_image_video":
+        await query.message.chat.send_message(
+            "🖼 Картинка → Видео\n\n"
+            "Этот режим будет работать через Seedance 2.0.\n\n"
+            "Следующим шагом подключим:\n"
+            "1. загрузку картинки\n"
+            "2. выбор длительности\n"
+            "3. ввод описания\n"
+            "4. генерацию видео",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    if action == "seedance_full_video":
+        await query.message.chat.send_message(
+            "🎬 Видео + Картинка + Текст\n\n"
+            "Сложный режим Seedance 2.0.\n\n"
+            "Позже сюда добавим:\n"
+            "• референсное видео\n"
+            "• 1–5 картинок\n"
+            "• текстовое описание\n"
+            "• выбор длительности\n"
+            "• звук включить/выключить",
             reply_markup=back_to_menu_keyboard()
         )
         return
