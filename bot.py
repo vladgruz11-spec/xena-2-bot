@@ -1087,6 +1087,83 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ], back_callback="seedance_aspect_9_16")
         )
         return
+
+    if action == "seedance_generate":
+        if user_id not in user_states:
+            await query.message.chat.send_message(
+                "Сначала настройте генерацию.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
+
+        settings = user_states[user_id]
+
+        duration = settings.get("duration", "5")
+
+        if duration not in VIDEO_PRICES:
+            await query.message.chat.send_message(
+                "⏱ Для 15 секунд цена пока не настроена.\n\n"
+                "Пока выберите 5 или 10 секунд.",
+                reply_markup=back_to_menu_keyboard(back_callback="seedance_text_video")
+            )
+            return
+
+        video_cost = VIDEO_PRICES[duration]
+        free_used, paid_credits = get_user(user_id)
+
+        if paid_credits < video_cost:
+            await query.message.chat.send_message(
+                f"💳 Недостаточно средств.\n\n"
+                f"Стоимость: {video_cost} ₽\n"
+                f"Ваш баланс: {paid_credits} ₽",
+                reply_markup=navigation_keyboard([
+                    [InlineKeyboardButton("💳 ПОПОЛНИТЬ БАЛАНС", callback_data="buy")]
+                ], back_callback="model_seedance_2")
+            )
+            return
+
+        await query.message.chat.send_message(
+            "🎬 Запускаю Seedance 2.0.\n\n"
+            "Генерация может занять несколько минут."
+        )
+
+        try:
+            video_path = generate_seedance_video(settings, user_id)
+
+            decrement_paid_credit(user_id, video_cost)
+
+            with open(video_path, "rb") as video_file:
+                    await query.message.chat.send_video(
+                    video=video_file,
+                    caption="✅ Готово! Вот твоё видео.",
+                    read_timeout=3600,
+                    write_timeout=3600,
+                    connect_timeout=60,
+                    pool_timeout=3600
+                )
+
+            _, paid_credits_after = get_user(user_id)
+
+            await query.message.chat.send_message(
+                f"Баланс: {paid_credits_after} ₽",
+                reply_markup=back_to_menu_keyboard(back_callback="main_menu")
+            )
+
+        except Exception as e:
+            import traceback
+            print("SEEDANCE_GENERATION_ERROR:", repr(e))
+            traceback.print_exc()
+
+            await query.message.chat.send_message(
+                "❌ Ошибка генерации Seedance 2.0.\n\n"
+                "Если ошибка повторяется — напишите в поддержку:\n"
+                "https://t.me/Vlad101ss",
+                 disable_web_page_preview=True,
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+
+        user_states.pop(user_id, None)
+        return
  
     if action == "create_image":
         keyboard = navigation_keyboard([
