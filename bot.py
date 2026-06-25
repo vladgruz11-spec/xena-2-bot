@@ -1231,6 +1231,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✍️ Теперь отправь описание видео.")
         return
 
+    if user_id in user_states and user_states[user_id].get("step") == "waiting_prompt":
+        user_states[user_id]["prompt"] = prompt
+        user_states[user_id]["step"] = "choose_audio"
+
+        await update.message.reply_text(
+            "🎵 Выберите звук:",
+            reply_markup=navigation_keyboard([
+                [InlineKeyboardButton("🔊 Сгенерировать AI-звук", callback_data="seedance_audio_ai")],
+                [InlineKeyboardButton("🔇 Без звука", callback_data="seedance_audio_off")]
+            ], back_callback="seedance_text_video")
+        )
+        return
+
     if user_id not in user_states:
         await update.message.reply_text("Сначала отправь картинку.")
         return
