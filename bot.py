@@ -984,6 +984,31 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ], back_callback="seedance_text_video")
         )
         return
+
+    if action.startswith("seedance_resolution_"):
+        if user_id not in user_states:
+            await query.message.chat.send_message(
+                "Сначала выберите режим генерации.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
+
+        resolution = action.replace("seedance_resolution_", "")
+        user_states[user_id]["resolution"] = resolution
+        user_states[user_id]["step"] = "choose_aspect_ratio"
+
+        await query.message.chat.send_message(
+            "📐 Выберите формат видео:",
+            reply_markup=navigation_keyboard([
+                [InlineKeyboardButton("16:9", callback_data="seedance_aspect_16_9")],
+                [InlineKeyboardButton("4:3", callback_data="seedance_aspect_4_3")],
+                [InlineKeyboardButton("1:1", callback_data="seedance_aspect_1_1")],
+                [InlineKeyboardButton("3:4", callback_data="seedance_aspect_3_4")],
+                [InlineKeyboardButton("9:16", callback_data="seedance_aspect_9_16")],
+                [InlineKeyboardButton("21:9", callback_data="seedance_aspect_21_9")]
+            ], back_callback="seedance_audio_ai")
+        )
+        return
  
     if action == "create_image":
         keyboard = navigation_keyboard([
