@@ -151,10 +151,12 @@ def aspect_ratio_menu(mode):
         [InlineKeyboardButton("1:1", callback_data=f"{mode}_aspect_1_1")],
         [InlineKeyboardButton("3:4", callback_data=f"{mode}_aspect_3_4")],
         [InlineKeyboardButton("9:16", callback_data=f"{mode}_aspect_9_16")],
-        [InlineKeyboardButton("21:9", callback_data=f"{mode}_aspect_21_9")]
+        [InlineKeyboardButton("21:9", callback_data=f"{mode}_aspect_21_9")],
+        [InlineKeyboardButton("⬅️ НАЗАД", callback_data="back_seedance_2_settings")],
+        [InlineKeyboardButton("🏠 ГЛАВНОЕ МЕНЮ", callback_data="main_menu")]
     ]
 
-    return navigation_keyboard(keyboard, back_callback="create_video")
+    return InlineKeyboardMarkup(keyboard)
 
 
 def duration_settings_menu(mode):
