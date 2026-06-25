@@ -113,6 +113,11 @@ def back_to_menu_keyboard(back_callback="main_menu"):
         [InlineKeyboardButton("🏠 ГЛАВНОЕ МЕНЮ", callback_data="main_menu")]
     ])
 
+def navigation_keyboard(buttons, back_callback="main_menu"):
+    buttons.append([InlineKeyboardButton("⬅️ НАЗАД", callback_data=back_callback)])
+    buttons.append([InlineKeyboardButton("🏠 ГЛАВНОЕ МЕНЮ", callback_data="main_menu")])
+    return InlineKeyboardMarkup(buttons)
+
 
 def back_to_partner_keyboard():
     return InlineKeyboardMarkup([
