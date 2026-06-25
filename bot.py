@@ -920,13 +920,18 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if action == "create_video":
         keyboard = navigation_keyboard([
-            [InlineKeyboardButton("🎥 Текст → Видео", callback_data="seedance_text_video")],
-            [InlineKeyboardButton("🖼 Картинка → Видео", callback_data="seedance_image_video")],
-            [InlineKeyboardButton("🎬 Картинка + Видео → Видео", callback_data="seedance_full_video")]
+            [InlineKeyboardButton("🎬 Seedance 2.0", callback_data="model_seedance_2")],
+            [InlineKeyboardButton("🧠 Grok Imagine Video 1.5", callback_data="model_grok_imagine_15")],
+            [InlineKeyboardButton("⚡ Kling 3.0 Turbo", callback_data="model_kling_30_turbo")],
+            [InlineKeyboardButton("🐎 HappyHorse-1.1", callback_data="model_happyhorse_11")],
+            [InlineKeyboardButton("🎞 Wan 2.7 Video", callback_data="model_wan_27_video")],
+            [InlineKeyboardButton("💎 Gemini Omni", callback_data="model_gemini_omni")],
+            [InlineKeyboardButton("🌊 Hailuo 2.3", callback_data="model_hailuo_23")],
+            [InlineKeyboardButton("🎥 Veo 3.1", callback_data="model_veo_31")]
         ], back_callback="main_menu")
 
         await query.message.chat.send_message(
-            "Выбери режим генерации:",
+            "Выбери нейросеть для генерации видео:",
             reply_markup=keyboard
         )
         return
