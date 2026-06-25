@@ -894,11 +894,10 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "create_audio":
-        keyboard = InlineKeyboardMarkup([
+        keyboard = navigation_keyboard([
             [InlineKeyboardButton("🎵 Текст → Аудио", callback_data="audio_text_to_audio")],
-            [InlineKeyboardButton("🎙 Голос/звук → Аудио", callback_data="audio_reference")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
-        ])
+            [InlineKeyboardButton("🎙 Голос/звук → Аудио", callback_data="audio_reference")]
+        ], back_callback="main_menu")
 
         await query.message.chat.send_message(
             "🎵 Создание аудио\n\n"
