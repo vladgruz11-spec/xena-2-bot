@@ -931,16 +931,16 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return
 
     if action == "seedance_full_video":
+        keyboard = navigation_keyboard([
+            [InlineKeyboardButton("📱 Формат 9:16", callback_data="full_video_format_9_16")],
+            [InlineKeyboardButton("🖥 Формат 16:9", callback_data="full_video_format_16_9")],
+            [InlineKeyboardButton("⬜ Формат 1:1", callback_data="full_video_format_1_1")]
+        ], back_callback="create_video")
+
         await query.message.chat.send_message(
-            "🎬 Видео + Картинка + Текст\n\n"
-            "Сложный режим Seedance 2.0.\n\n"
-            "Позже сюда добавим:\n"
-            "• референсное видео\n"
-            "• 1–5 картинок\n"
-            "• текстовое описание\n"
-            "• выбор длительности\n"
-            "• звук включить/выключить",
-            reply_markup=back_to_menu_keyboard(back_callback="create_video")
+            "🎬 Картинка + Видео → Видео\n\n"
+            "Выбери формат видео:",
+            reply_markup=keyboard
         )
         return
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
