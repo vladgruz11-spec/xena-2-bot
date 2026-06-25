@@ -1239,6 +1239,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🎵 Выберите звук:",
             reply_markup=navigation_keyboard([
                 [InlineKeyboardButton("🔊 Сгенерировать AI-звук", callback_data="seedance_audio_ai")],
+                [InlineKeyboardButton("🎵 Добавить своё аудио", callback_data="seedance_audio_custom")],
                 [InlineKeyboardButton("🔇 Без звука", callback_data="seedance_audio_off")]
             ], back_callback="seedance_text_video")
         )
