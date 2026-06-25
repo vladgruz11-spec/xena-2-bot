@@ -871,11 +871,7 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], back_callback="main_menu")
 
         await query.message.chat.send_message(
-            "🎬 Создание видео\n\n"
-            "Выбери простой режим:\n\n"
-            "🎥 Текст → Видео — просто опиши ролик.\n"
-            "🖼 Картинка → Видео — оживи фото.\n"
-            "🎬 Видео + Картинка + Текст — сложный режим с референсами.",
+            "Выбери режим генерации:",
             reply_markup=keyboard
         )
         return
