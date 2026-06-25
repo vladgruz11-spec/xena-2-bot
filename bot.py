@@ -107,9 +107,10 @@ def main_inline_menu():
     return InlineKeyboardMarkup(keyboard)
 
 
-def back_to_menu_keyboard():
+def back_to_menu_keyboard(back_callback="main_menu"):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        [InlineKeyboardButton("⬅️ НАЗАД", callback_data=back_callback)],
+        [InlineKeyboardButton("🏠 ГЛАВНОЕ МЕНЮ", callback_data="main_menu")]
     ])
 
 
