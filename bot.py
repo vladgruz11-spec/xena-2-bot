@@ -940,32 +940,16 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "model_seedance_2":
+        keyboard = navigation_keyboard([
+            [InlineKeyboardButton("🎥 Текст → Видео", callback_data="seedance_text_video")],
+            [InlineKeyboardButton("🖼 Картинка → Видео", callback_data="seedance_image_video")],
+            [InlineKeyboardButton("🖼🎬 Картинка + Видео → Видео", callback_data="seedance_image_video_to_video")]
+        ], back_callback="create_video")
+
         await query.message.chat.send_message(
             "🎬 Seedance 2.0\n\n"
-            "Настрой параметры генерации:",
-            reply_markup=video_settings_menu("seedance_2")
-        )
-        return
-
-    if action == "back_seedance_2_settings":
-        await query.message.chat.send_message(
-            "🎬 Seedance 2.0\n\n"
-            "Настрой параметры генерации:",
-            reply_markup=video_settings_menu("seedance_2")
-        )
-        return
-
-    if action == "seedance_2_aspect_ratio":
-        await query.message.chat.send_message(
-            "📐 Выбери формат видео:",
-            reply_markup=aspect_ratio_menu("seedance_2")
-        )
-        return
-
-    if action == "seedance_2_aspect_ratio":
-        await query.message.chat.send_message(
-            "📐 Выбери формат видео:",
-            reply_markup=aspect_ratio_menu("seedance_2")
+            "Выберите режим генерации:",
+            reply_markup=keyboard
         )
         return
 
