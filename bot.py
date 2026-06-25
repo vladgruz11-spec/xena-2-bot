@@ -914,7 +914,7 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "1. выбор длительности 5/10/15 сек\n"
             "2. ввод описания\n"
             "3. отправку задачи в Kie",
-            reply_markup=back_to_menu_keyboard()
+            reply_markup=back_to_menu_keyboard(back_callback="create_video")
         )
         return
 
@@ -927,7 +927,7 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "2. выбор длительности\n"
             "3. ввод описания\n"
             "4. генерацию видео",
-            reply_markup=back_to_menu_keyboard()
+            reply_markup=back_to_menu_keyboard(back_callback="create_video")
         )
         return
 
@@ -941,7 +941,7 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• текстовое описание\n"
             "• выбор длительности\n"
             "• звук включить/выключить",
-            reply_markup=back_to_menu_keyboard()
+            reply_markup=back_to_menu_keyboard(back_callback="create_video")
         )
         return
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
