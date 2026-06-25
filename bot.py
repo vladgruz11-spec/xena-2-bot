@@ -154,10 +154,7 @@ def aspect_ratio_menu(mode):
         [InlineKeyboardButton("21:9", callback_data=f"{mode}_aspect_21_9")]
     ]
 
-    return navigation_keyboard(
-        keyboard,
-        back_callback="model_seedance_2"
-    )
+    return navigation_keyboard(keyboard, back_callback="create_video")
 
 
 def duration_settings_menu(mode):
