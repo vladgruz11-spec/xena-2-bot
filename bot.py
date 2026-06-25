@@ -961,8 +961,18 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        user_states[user_id]["generate_audio"] = action == "seedance_audio_ai"
-        user_states[user_id]["step"] = "choose_resolution"
+        if action == "seedance_audio_ai":
+            user_states[user_id]["audio_mode"] = "ai"
+            user_states[user_id]["generate_audio"] = True
+
+        elif action == "seedance_audio_custom":
+            user_states[user_id]["audio_mode"] = "custom"
+            user_states[user_id]["generate_audio"] = False
+
+        else:
+            user_states[user_id]["audio_mode"] = "off"
+            user_states[user_id]["generate_audio"] = False
+            user_states[user_id]["step"] = "choose_resolution"
 
         await query.message.chat.send_message(
             "📺 Выберите разрешение:",
