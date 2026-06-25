@@ -489,6 +489,41 @@ def upload_image_to_kie(image_path: str) -> str:
     download_url = result["data"]["downloadUrl"]
     return download_url
 
+def create_seedance_video_task(settings: dict) -> str:
+    url = "https://api.kie.ai/api/v1/jobs/createTask"
+
+    headers = {
+        "Authorization": f"Bearer {KIE_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": "bytedance/seedance-2",
+        "input": {
+            "prompt": settings["prompt"],
+            "generate_audio": settings.get("generate_audio", False),
+            "resolution": settings.get("resolution", "480p"),
+            "aspect_ratio": settings.get("aspect_ratio", "9:16"),
+            "duration": int(settings.get("duration", "5"))
+        }
+    }
+
+    response = requests.post(url, headers=headers, json=payload, timeout=3600)
+    response.raise_for_status()
+    result = response.json()
+
+    if result.get("code") != 200:
+        raise RuntimeError(f"Ошибка создания задачи Seedance: {result}")
+
+    return result["data"]["taskId"]
+
+
+def generate_seedance_video(settings: dict, user_id: int) -> str:
+    task_id = create_seedance_video_task(settings)
+    video_url = wait_kie_video_result(task_id)
+    video_path = download_video(video_url, user_id)
+    return video_path
+
 
 def create_kie_video_task(image_url: str, prompt: str, duration: str) -> str:
     url = "https://api.kie.ai/api/v1/jobs/createTask"
