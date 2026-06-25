@@ -788,11 +788,10 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         payment_url, payment_id = create_yookassa_payment(user_id, amount)
 
-        keyboard = InlineKeyboardMarkup([
+        keyboard = navigation_keyboard([
             [InlineKeyboardButton("💳 Оплатить", url=payment_url)],
-            [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
-        ])
+            [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")]
+        ], back_callback="buy")
 
         await query.message.chat.send_message(
             f"💳 Пополнение баланса на {amount} ₽\n\n"
