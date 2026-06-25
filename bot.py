@@ -153,7 +153,11 @@ def aspect_ratio_menu(mode):
         [InlineKeyboardButton("9:16", callback_data=f"{mode}_aspect_9_16")],
         [InlineKeyboardButton("21:9", callback_data=f"{mode}_aspect_21_9")]
     ]
-    return navigation_keyboard(keyboard, back_callback=f"{mode}_settings")
+
+    return navigation_keyboard(
+        keyboard,
+        back_callback="model_seedance_2"
+    )
 
 
 def duration_settings_menu(mode):
