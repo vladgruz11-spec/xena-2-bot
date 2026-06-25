@@ -764,10 +764,9 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.chat.send_message(
                 "⏳ Оплата пока не найдена.\n\n"
                 "Если ты уже оплатил — подожди 10–20 секунд и нажми кнопку ещё раз.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")],
-                    [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
-                ])
+                reply_markup=navigation_keyboard([
+                    [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")]
+                ], back_callback="buy")
             )
             return
 
