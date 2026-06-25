@@ -1009,6 +1009,28 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ], back_callback="seedance_audio_ai")
         )
         return
+
+    if action.startswith("seedance_aspect_"):
+        if user_id not in user_states:
+            await query.message.chat.send_message(
+                "Сначала выберите режим генерации.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
+
+        aspect = action.replace("seedance_aspect_", "").replace("_", ":")
+        user_states[user_id]["aspect_ratio"] = aspect
+        user_states[user_id]["step"] = "choose_duration"
+
+        await query.message.chat.send_message(
+            "⏱ Выберите длительность:",
+            reply_markup=navigation_keyboard([
+                [InlineKeyboardButton("5 секунд", callback_data="seedance_duration_5")],
+                [InlineKeyboardButton("10 секунд", callback_data="seedance_duration_10")],
+                [InlineKeyboardButton("15 секунд", callback_data="seedance_duration_15")]
+            ], back_callback="seedance_resolution_720p")
+        )
+        return
  
     if action == "create_image":
         keyboard = navigation_keyboard([
