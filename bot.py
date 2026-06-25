@@ -955,6 +955,13 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if action == "seedance_2_aspect_ratio":
+        await query.message.chat.send_message(
+            "📐 Выбери формат видео:",
+            reply_markup=aspect_ratio_menu("seedance_2")
+        )
+        return
+
     if action == "create_image":
         keyboard = navigation_keyboard([
             [InlineKeyboardButton("🖼 Текст → Изображение", callback_data="image_text_to_image")],
