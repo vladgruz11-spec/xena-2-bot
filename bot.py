@@ -980,6 +980,51 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=video_settings_menu("full_video")
         )
         return
+
+    if action in ["text_video_settings", "image_video_settings", "full_video_settings"]:
+        mode = action.replace("_settings", "")
+
+        await query.message.chat.send_message(
+            "Настрой параметры генерации:",
+            reply_markup=video_settings_menu(mode)
+        )
+        return
+
+    if action.endswith("_resolution"):
+        mode = action.replace("_resolution", "")
+
+        await query.message.chat.send_message(
+            "📺 Выбери разрешение:",
+            reply_markup=resolution_menu(mode)
+        )
+        return
+
+    if action.endswith("_aspect_ratio"):
+        mode = action.replace("_aspect_ratio", "")
+
+        await query.message.chat.send_message(
+            "📐 Выбери формат видео:",
+            reply_markup=aspect_ratio_menu(mode)
+        )
+        return
+
+    if action.endswith("_duration"):
+        mode = action.replace("_duration", "")
+
+        await query.message.chat.send_message(
+            "⏱ Выбери длительность:",
+            reply_markup=duration_settings_menu(mode)
+        )
+        return
+
+    if action.endswith("_audio_settings"):
+        mode = action.replace("_audio_settings", "")
+
+        await query.message.chat.send_message(
+            "🔊 Генерировать AI звук вместе с видео?",
+            reply_markup=audio_settings_menu(mode)
+        )
+        return
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     save_username(user_id, update.message.from_user.username)
