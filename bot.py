@@ -881,11 +881,10 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "create_image":
-        keyboard = InlineKeyboardMarkup([
+        keyboard = navigation_keyboard([
             [InlineKeyboardButton("🖼 Текст → Изображение", callback_data="image_text_to_image")],
-            [InlineKeyboardButton("🖼 Фото → Изображение", callback_data="image_image_to_image")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
-        ])
+            [InlineKeyboardButton("🖼 Фото → Изображение", callback_data="image_image_to_image")]
+        ], back_callback="main_menu")
 
         await query.message.chat.send_message(
             "🖼 Создание изображения\n\n"
