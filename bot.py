@@ -953,7 +953,7 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if action in ["seedance_audio_ai", "seedance_audio_off"]:
+    if action in ["seedance_audio_ai", "seedance_audio_custom", "seedance_audio_off"]:
         if user_id not in user_states:
             await query.message.chat.send_message(
                 "Сначала выберите режим генерации.",
