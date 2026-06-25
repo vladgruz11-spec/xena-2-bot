@@ -980,12 +980,18 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "seedance_text_video":
-        await query.message.chat.send_message(
-            "🎥 Текст → Видео\n\n"
-            "Настрой параметры генерации:",
-            reply_markup=video_settings_menu("text_video")
-        )
-        return
+        user_states[user_id] = {
+            "model": "seedance_2",
+            "mode": "text_to_video",
+            "step": "waiting_prompt"
+        }
+
+    await query.message.chat.send_message(
+        "✍️ Добавьте описание видео.\n\n"
+        "Напишите, что должно происходить в ролике.",
+        reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+    )
+    return
 
     if action == "seedance_image_video":
         await query.message.chat.send_message(
