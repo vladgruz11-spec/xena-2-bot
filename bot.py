@@ -121,9 +121,9 @@ def seedance_modes_menu():
 
 def seedance_image_type_menu(back_callback):
     return navigation_keyboard([
-        [InlineKeyboardButton("🖼 Отправить первый кадр", callback_data="seedance_image_first")],
-        [InlineKeyboardButton("🖼 Отправить первый + последний кадр", callback_data="seedance_image_first_last")],
-        [InlineKeyboardButton("🖼 Первый + последний кадр + дополнительные кадры до 9 шт", callback_data="seedance_image_reference_pack")]
+        [InlineKeyboardButton("🖼 Исходное изображение", callback_data="seedance_image_first")],
+        [InlineKeyboardButton("🖼 Первый и последний кадр", callback_data="seedance_image_first_last")],
+        [InlineKeyboardButton("🎞 Раскадровка", callback_data="seedance_image_reference_pack")]
     ], back_callback=back_callback)
 
 
@@ -464,7 +464,7 @@ async def send_kie_error(chat, back_callback="model_seedance_2"):
 
 
 async def ask_seedance_image_type(chat, back_callback="model_seedance_2"):
-    await chat.send_message("🖼 Отправьте изображение(-я):", reply_markup=seedance_image_type_menu(back_callback))
+    await chat.send_message("🖼 Выберите вариант загрузки изображений:", reply_markup=seedance_image_type_menu(back_callback))
 
 
 async def ask_seedance_prompt(target, back_callback="model_seedance_2"):
@@ -525,6 +525,24 @@ def seedance_price(settings: dict) -> int:
     duration = str(settings.get("duration", "5"))
     audio_key = "audio_on" if settings.get("generate_audio") else "audio_off"
     return SEEDANCE_PRICES.get(mode, {}).get(audio_key, {}).get(duration, 0)
+
+
+def normalize_video_duration(seconds: int) -> str:
+    """Приводим длительность исходного видео к тарифной длительности Seedance."""
+    if seconds <= 5:
+        return "5"
+    if seconds <= 10:
+        return "10"
+    return "15"
+
+
+async def send_seedance_ready(chat, user_id: int, back_callback="seedance_back_to_aspect"):
+    user_states[user_id]["step"] = "ready_to_generate"
+    price = seedance_price(user_states[user_id])
+    await chat.send_message(
+        f"✅ Всё готово.\n\nСтоимость генерации: {price} ₽.\n\nНажмите кнопку ниже, чтобы создать видео.",
+        reply_markup=seedance_generate_menu(back_callback=back_callback)
+    )
 
 
 def clean_aspect(action: str) -> str:
@@ -725,6 +743,19 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await chat.send_message("🎬 Seedance 2.0\n\nВыберите режим генерации:", reply_markup=seedance_modes_menu())
             return
         user_states[user_id]["aspect_ratio"] = clean_aspect(action)
+
+        if user_states[user_id].get("mode") == "image_video_to_video":
+            video_duration = user_states[user_id].get("video_duration")
+            if video_duration is None:
+                await chat.send_message(
+                    "Сначала загрузите исходное видео.",
+                    reply_markup=back_to_menu_keyboard(back_callback="seedance_back_to_image_type")
+                )
+                return
+            user_states[user_id]["duration"] = normalize_video_duration(int(video_duration))
+            await send_seedance_ready(chat, user_id, back_callback="seedance_back_to_aspect")
+            return
+
         user_states[user_id]["step"] = "choose_duration"
         await chat.send_message("⏱ Выберите длительность:", reply_markup=seedance_duration_menu(back_callback="seedance_back_to_aspect"))
         return
@@ -748,12 +779,7 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return
         user_states[user_id]["duration"] = duration
-        user_states[user_id]["step"] = "ready_to_generate"
-        price = seedance_price(user_states[user_id])
-        await chat.send_message(
-            f"✅ Всё готово.\n\nСтоимость генерации: {price} ₽.\n\nНажмите кнопку ниже, чтобы создать видео.",
-            reply_markup=seedance_generate_menu(back_callback="seedance_back_to_duration")
-        )
+        await send_seedance_ready(chat, user_id, back_callback="seedance_back_to_duration")
         return
 
     if action == "seedance_back_to_duration":
@@ -828,7 +854,7 @@ async def handle_seedance_generate(chat, user_id: int):
             reply_markup=navigation_keyboard([[InlineKeyboardButton("💳 ПОПОЛНИТЬ БАЛАНС", callback_data="buy")]], back_callback="model_seedance_2")
         )
         return
-    await chat.send_message("🎬 Генерация запущена.\n\nЭто может занять несколько минут.")
+    await chat.send_message("🎬 Генерация запущена.\n\nОбычно это занимает несколько минут. Если нейросеть перегружена, ожидание может продлиться до 30 минут.")
     task_created = False
     try:
         task_id = create_seedance_task(settings)
@@ -964,9 +990,15 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Отправьте видео как обычный видеофайл, чтобы бот мог проверить длительность.", reply_markup=back_to_menu_keyboard(back_callback="seedance_back_to_image_type"))
         return
     duration = int(round(video.duration or 0))
-    if duration not in [5, 10, 15]:
+    if duration <= 0:
         await update.message.reply_text(
-            "⚠️ Поддерживается видео длительностью только 5, 10 или 15 секунд.\n\nЗагрузите другое видео.",
+            "⚠️ Не удалось определить длительность видео.\n\nЗагрузите другое видео или отправьте его как обычный видеофайл.",
+            reply_markup=back_to_menu_keyboard(back_callback="seedance_back_to_image_type")
+        )
+        return
+    if duration > 15:
+        await update.message.reply_text(
+            "⚠️ Исходное видео должно быть не длиннее 15 секунд.\n\nЗагрузите другое видео.",
             reply_markup=back_to_menu_keyboard(back_callback="seedance_back_to_image_type")
         )
         return
@@ -981,8 +1013,11 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state.setdefault("local_files", []).append(str(local_path))
     state["reference_video_url"] = kie_url
     state["video_duration"] = duration
+    state["duration"] = normalize_video_duration(duration)
     state["step"] = "waiting_prompt"
-    await update.message.reply_text(f"✅ Видео получено. Длительность: {duration} секунд.")
+    await update.message.reply_text(
+        f"✅ Видео получено. Длительность: {duration} секунд.\n\nДлительность генерации будет выставлена автоматически.",
+    )
     await ask_seedance_prompt(update.message, back_callback="seedance_back_to_image_type")
 
 
