@@ -46,7 +46,16 @@ PARTNER_BONUS_PERCENT = 10
 REFERRED_FIRST_TOPUP_BONUS_PERCENT = 5
 MAX_BONUS_PAYMENT_PERCENT = 30
 
-# Цены Seedance 2.0. Ключи: режим -> разрешение -> длительность.
+# Доплата за AI-звук.
+# Kie списывает дополнительные кредиты за generate_audio=True, поэтому цена зависит не только от режима, качества и длительности,
+# но и от выбранного звука. Без звука доплаты нет.
+SEEDANCE_AUDIO_SURCHARGE = {
+    "5": 30,
+    "10": 50,
+    "15": 70,
+}
+
+# Цены Seedance 2.0 БЕЗ AI-звука. Ключи: режим -> разрешение -> длительность.
 # 4K временно убран из интерфейса.
 SEEDANCE_PRICES = {
     "text_to_video": {
@@ -693,7 +702,23 @@ def seedance_price(settings: dict) -> int:
     mode = settings.get("mode", "text_to_video")
     resolution = settings.get("resolution", "480p")
     duration = str(settings.get("duration", "5"))
-    return SEEDANCE_PRICES.get(mode, {}).get(resolution, {}).get(duration, 0)
+
+    base_price = SEEDANCE_PRICES.get(mode, {}).get(resolution, {}).get(duration, 0)
+    if base_price <= 0:
+        return 0
+
+    if settings.get("generate_audio", False):
+        base_price += SEEDANCE_AUDIO_SURCHARGE.get(duration, 0)
+
+    return base_price
+
+
+def seedance_audio_price_note(settings: dict) -> str:
+    duration = str(settings.get("duration", "5"))
+    if settings.get("generate_audio", False):
+        surcharge = SEEDANCE_AUDIO_SURCHARGE.get(duration, 0)
+        return f"AI-звук: включён (+{surcharge} ₽)"
+    return "AI-звук: выключен"
 
 
 def normalize_video_duration(seconds: int) -> str:
@@ -710,8 +735,14 @@ async def send_seedance_ready(chat, user_id: int, back_callback="seedance_back_t
     price = seedance_price(user_states[user_id])
     resolution = user_states[user_id].get("resolution", "480p")
     duration = user_states[user_id].get("duration", "5")
+    audio_note = seedance_audio_price_note(user_states[user_id])
     await chat.send_message(
-        f"✅ Всё готово.\n\nРазрешение: {resolution}\nДлительность: {duration} сек.\nСтоимость генерации: {price} ₽.\n\nНажмите кнопку ниже, чтобы создать видео.",
+        f"✅ Всё готово.\n\n"
+        f"Разрешение: {resolution}\n"
+        f"Длительность: {duration} сек.\n"
+        f"{audio_note}\n"
+        f"Стоимость генерации: {price} ₽.\n\n"
+        f"Нажмите кнопку ниже, чтобы создать видео.",
         reply_markup=seedance_generate_menu(back_callback=back_callback)
     )
 
