@@ -765,49 +765,70 @@ async def send_main_menu(target):
         )
 
 
-async def ask_seedance_prompt(chat, back_callback="model_seedance_2"):
-    await chat.send_message(
+async def send_flow_message(target, text: str, reply_markup=None, **kwargs):
+    """
+    target может быть Chat или Message.
+    У Chat есть send_message(), у Message — reply_text().
+    Эта функция убирает ошибку: Message object has no attribute send_message.
+    """
+    if hasattr(target, "send_message"):
+        return await target.send_message(text, reply_markup=reply_markup, **kwargs)
+
+    if hasattr(target, "reply_text"):
+        return await target.reply_text(text, reply_markup=reply_markup, **kwargs)
+
+    raise RuntimeError("Не удалось отправить сообщение: неизвестный тип target")
+
+
+async def ask_seedance_prompt(target, back_callback="model_seedance_2"):
+    await send_flow_message(
+        target,
         "✍️ Добавьте описание видео.\n\n"
         "Напишите, что должно происходить в ролике.",
         reply_markup=back_to_menu_keyboard(back_callback=back_callback)
     )
 
 
-async def ask_seedance_audio(chat, back_callback="model_seedance_2"):
-    await chat.send_message(
+async def ask_seedance_audio(target, back_callback="model_seedance_2"):
+    await send_flow_message(
+        target,
         "🎵 Выберите звук:",
         reply_markup=seedance_audio_menu(back_callback=back_callback)
     )
 
 
-async def ask_seedance_resolution(chat):
-    await chat.send_message(
+async def ask_seedance_resolution(target):
+    await send_flow_message(
+        target,
         "📺 Выберите разрешение:",
         reply_markup=seedance_resolution_menu()
     )
 
 
-async def ask_seedance_aspect(chat):
-    await chat.send_message(
+async def ask_seedance_aspect(target):
+    await send_flow_message(
+        target,
         "📐 Выберите формат видео:",
         reply_markup=seedance_aspect_menu()
     )
 
 
-async def ask_seedance_duration(chat):
-    await chat.send_message(
+async def ask_seedance_duration(target):
+    await send_flow_message(
+        target,
         "⏱ Выберите длительность:",
         reply_markup=seedance_duration_menu()
     )
 
 
-async def ask_seedance_final(chat, user_id: int):
+async def ask_seedance_final(target, user_id: int):
     settings = user_states.get(user_id, {})
     mode = settings.get("mode", "")
     duration = settings.get("duration", "5")
     cost = get_seedance_price(mode, duration)
 
-    await chat.send_message(
+    await send_flow_message(
+        target,
         "✅ Всё готово.\n\n"
         f"Стоимость генерации: {cost} ₽\n\n"
         "Нажмите кнопку ниже, чтобы создать видео.",
