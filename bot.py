@@ -121,9 +121,9 @@ def seedance_modes_menu():
 
 def seedance_image_type_menu(back_callback):
     return navigation_keyboard([
-        [InlineKeyboardButton("🖼 Исходное изображение", callback_data="seedance_image_first")],
-        [InlineKeyboardButton("🖼 Первый и последний кадр", callback_data="seedance_image_first_last")],
-        [InlineKeyboardButton("🎞 Раскадровка", callback_data="seedance_image_reference_pack")]
+        [InlineKeyboardButton("1 изображение", callback_data="seedance_image_first")],
+        [InlineKeyboardButton("Первый и последний кадр", callback_data="seedance_image_first_last")],
+        [InlineKeyboardButton("Несколько изображений", callback_data="seedance_image_reference_pack")]
     ], back_callback=back_callback)
 
 
@@ -236,6 +236,15 @@ def give_balance(user_id: int, amount: int):
     cur = conn.cursor()
     cur.execute("INSERT OR IGNORE INTO users (user_id, free_used, paid_credits) VALUES (?, 0, 0)", (user_id,))
     cur.execute("UPDATE users SET paid_credits = paid_credits + ? WHERE user_id = ?", (amount, user_id))
+    conn.commit()
+    conn.close()
+
+
+def reset_user_balance(user_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("INSERT OR IGNORE INTO users (user_id, free_used, paid_credits) VALUES (?, 0, 0)", (user_id,))
+    cur.execute("UPDATE users SET paid_credits = 0 WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
 
@@ -465,7 +474,7 @@ async def send_kie_error(chat, back_callback="model_seedance_2"):
 
 
 async def ask_seedance_image_type(chat, back_callback="model_seedance_2"):
-    await chat.send_message("🖼 Выберите 1 вариант загрузки изображений:", reply_markup=seedance_image_type_menu(back_callback))
+    await chat.send_message("Выберите 1 вариант загрузки изображений:", reply_markup=seedance_image_type_menu(back_callback))
 
 
 async def ask_seedance_prompt(target, back_callback="model_seedance_2"):
@@ -602,6 +611,37 @@ async def giveuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     amount = int(context.args[1])
     give_balance(target_id, amount)
     await update.message.reply_text(f"✅ {context.args[0]} выдано {amount} ₽")
+
+
+async def resetuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Нет доступа.")
+        return
+
+    if len(context.args) != 1:
+        await update.message.reply_text(
+            "Используй:\n"
+            "/resetuser @username\n\n"
+            "Пример:\n"
+            "/resetuser @username"
+        )
+        return
+
+    username = context.args[0]
+    target_id = get_user_id_by_username(username)
+
+    if target_id is None:
+        await update.message.reply_text(
+            "❌ Пользователь не найден.\n"
+            "Он должен сначала написать боту /start."
+        )
+        return
+
+    reset_user_balance(target_id)
+
+    await update.message.reply_text(
+        f"✅ Баланс {username} обнулён."
+    )
 
 
 async def partners(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -891,7 +931,7 @@ async def handle_topup(chat, user_id: int, action: str):
         [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")]
     ], back_callback="buy")
     await chat.send_message(
-        f"💳 Пополнение баланса на {amount} ₽\n\n1. Нажмите «Оплатить»\n2. После оплаты вернитесь сюда\n3. Нажмите «✅ Проверить оплату»",
+        f"💳 Пополнение баланса на {amount} ₽\n\n⚠️ На время оплаты отключите VPN.\n\n1. Нажмите «Оплатить»\n2. После оплаты вернитесь сюда\n3. Нажмите «✅ Проверить оплату»",
         reply_markup=keyboard
     )
 
@@ -1073,6 +1113,7 @@ def main():
     app.add_handler(CommandHandler("myid", myid))
     app.add_handler(CommandHandler("give", give))
     app.add_handler(CommandHandler("giveuser", giveuser))
+    app.add_handler(CommandHandler("resetuser", resetuser))
     app.add_handler(CommandHandler("partners", partners))
     app.add_handler(CommandHandler("paypartner", paypartner))
     app.add_handler(CallbackQueryHandler(handle_menu_button))
