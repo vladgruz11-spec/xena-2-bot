@@ -347,7 +347,12 @@ def build_seedance_payload(settings: dict):
     }
     image_type = settings.get("image_type")
 
-    if mode == "image_to_video":
+    if mode == "text_to_video":
+        pass
+
+    elif mode == "image_to_video":
+        # В Seedance нельзя смешивать first_frame/last_frame и reference_image_urls.
+        # Поэтому каждый вариант загрузки собирает отдельный, не конфликтующий payload.
         if image_type == "first":
             input_data["first_frame_url"] = settings["first_frame_url"]
         elif image_type == "first_last":
@@ -357,14 +362,10 @@ def build_seedance_payload(settings: dict):
             input_data["reference_image_urls"] = settings["reference_image_urls"]
 
     elif mode == "image_video_to_video":
+        # Kie/Seedance возвращает 422, если одновременно передать reference_video_urls
+        # и first_frame_url/last_frame_url/reference_image_urls. Для режима с исходным
+        # видео отправляем только исходное видео + описание + настройки.
         input_data["reference_video_urls"] = [settings["reference_video_url"]]
-        if image_type == "first":
-            input_data["first_frame_url"] = settings["first_frame_url"]
-        elif image_type == "first_last":
-            input_data["first_frame_url"] = settings["first_frame_url"]
-            input_data["last_frame_url"] = settings["last_frame_url"]
-        elif image_type == "reference_pack":
-            input_data["reference_image_urls"] = settings["reference_image_urls"]
 
     return {"model": "bytedance/seedance-2", "input": input_data}
 
@@ -464,7 +465,7 @@ async def send_kie_error(chat, back_callback="model_seedance_2"):
 
 
 async def ask_seedance_image_type(chat, back_callback="model_seedance_2"):
-    await chat.send_message("🖼 Выберите вариант загрузки изображений:", reply_markup=seedance_image_type_menu(back_callback))
+    await chat.send_message("🖼 Выберите 1 вариант загрузки изображений:", reply_markup=seedance_image_type_menu(back_callback))
 
 
 async def ask_seedance_prompt(target, back_callback="model_seedance_2"):
@@ -505,7 +506,7 @@ async def after_images_ready(chat, user_id: int):
     if state.get("mode") == "image_video_to_video":
         state["step"] = "waiting_video"
         await chat.send_message(
-            "🎬 Теперь отправьте исходное видео.\n\nЗагружайте видео длительностью 5, 10 или 15 секунд — в зависимости от длительности, которую хотите получить.",
+            "🎬 Теперь отправьте исходное видео.\n\nЗагрузите видео длительностью до 15 секунд. Длительность готового ролика будет выставлена автоматически по длительности исходного видео.",
             reply_markup=back_to_menu_keyboard(back_callback="seedance_back_to_image_type")
         )
         return
@@ -1016,7 +1017,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state["duration"] = normalize_video_duration(duration)
     state["step"] = "waiting_prompt"
     await update.message.reply_text(
-        f"✅ Видео получено. Длительность: {duration} секунд.\n\nДлительность генерации будет выставлена автоматически.",
+        f"✅ Видео получено. Длительность: {duration} секунд.\n\nДлительность генерации будет выставлена автоматически: {state["duration"]} секунд.",
     )
     await ask_seedance_prompt(update.message, back_callback="seedance_back_to_image_type")
 
