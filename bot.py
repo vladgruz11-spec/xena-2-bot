@@ -761,9 +761,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_referrer(user_id, int(context.args[0].replace("partner_", "")), "bonus")
     await send_main_menu(update.message)
 
-async def id_command(update, context):
-    await update.message.reply_text(f"Ваш chat_id:\n{update.effective_chat.id}")
-
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_main_menu(update.message)
@@ -1488,7 +1485,6 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.VIDEO, handle_video))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(CommandHandler("id", id_command))
     print("Бот запущен...")
     app.run_polling()
 
