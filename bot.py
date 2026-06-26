@@ -41,19 +41,23 @@ SUPPORT_URL = "https://t.me/Vlad101ss"
 user_states = {}
 ADMIN_IDS = {6164104276}
 
-# Временные цены. Когда определишь точный прайс Seedance — меняем только этот блок.
+# Цены Seedance 2.0. Ключи: режим -> разрешение -> длительность.
+# 4K временно убран из интерфейса.
 SEEDANCE_PRICES = {
     "text_to_video": {
-        "audio_on": {"5": 98, "10": 147, "15": 196},
-        "audio_off": {"5": 98, "10": 147, "15": 196},
+        "480p": {"5": 99, "10": 199, "15": 299},
+        "720p": {"5": 209, "10": 419, "15": 629},
+        "1080p": {"5": 429, "10": 849, "15": 1269},
     },
     "image_to_video": {
-        "audio_on": {"5": 98, "10": 147, "15": 196},
-        "audio_off": {"5": 98, "10": 147, "15": 196},
+        "480p": {"5": 99, "10": 199, "15": 299},
+        "720p": {"5": 209, "10": 419, "15": 629},
+        "1080p": {"5": 429, "10": 849, "15": 1269},
     },
     "image_video_to_video": {
-        "audio_on": {"5": 98, "10": 147, "15": 196},
-        "audio_off": {"5": 98, "10": 147, "15": 196},
+        "480p": {"5": 109, "10": 219, "15": 319},
+        "720p": {"5": 229, "10": 459, "15": 689},
+        "1080p": {"5": 469, "10": 929, "15": 1389},
     },
 }
 
@@ -100,7 +104,7 @@ def topup_inline_menu():
 
 def video_models_menu():
     return navigation_keyboard([
-        [InlineKeyboardButton("🎬 Seedance 2.0", callback_data="model_seedance_2")],
+        [InlineKeyboardButton("🎬 Seedance 2.0 (от 99 ₽)", callback_data="model_seedance_2")],
         [InlineKeyboardButton("🧠 Grok Imagine Video 1.5", callback_data="model_grok_imagine_15")],
         [InlineKeyboardButton("⚡ Kling 3.0 Turbo", callback_data="model_kling_30_turbo")],
         [InlineKeyboardButton("🐎 HappyHorse-1.1", callback_data="model_happyhorse_11")],
@@ -138,8 +142,7 @@ def seedance_resolution_menu(back_callback):
     return navigation_keyboard([
         [InlineKeyboardButton("480p", callback_data="seedance_resolution_480p")],
         [InlineKeyboardButton("720p", callback_data="seedance_resolution_720p")],
-        [InlineKeyboardButton("1080p", callback_data="seedance_resolution_1080p")],
-        [InlineKeyboardButton("4K", callback_data="seedance_resolution_4k")]
+        [InlineKeyboardButton("1080p", callback_data="seedance_resolution_1080p")]
     ], back_callback=back_callback)
 
 
@@ -576,9 +579,9 @@ def reset_seedance_files(user_id: int):
 
 def seedance_price(settings: dict) -> int:
     mode = settings.get("mode", "text_to_video")
+    resolution = settings.get("resolution", "480p")
     duration = str(settings.get("duration", "5"))
-    audio_key = "audio_on" if settings.get("generate_audio") else "audio_off"
-    return SEEDANCE_PRICES.get(mode, {}).get(audio_key, {}).get(duration, 0)
+    return SEEDANCE_PRICES.get(mode, {}).get(resolution, {}).get(duration, 0)
 
 
 def normalize_video_duration(seconds: int) -> str:
@@ -593,8 +596,10 @@ def normalize_video_duration(seconds: int) -> str:
 async def send_seedance_ready(chat, user_id: int, back_callback="seedance_back_to_aspect"):
     user_states[user_id]["step"] = "ready_to_generate"
     price = seedance_price(user_states[user_id])
+    resolution = user_states[user_id].get("resolution", "480p")
+    duration = user_states[user_id].get("duration", "5")
     await chat.send_message(
-        f"✅ Всё готово.\n\nСтоимость генерации: {price} ₽.\n\nНажмите кнопку ниже, чтобы создать видео.",
+        f"✅ Всё готово.\n\nРазрешение: {resolution}\nДлительность: {duration} сек.\nСтоимость генерации: {price} ₽.\n\nНажмите кнопку ниже, чтобы создать видео.",
         reply_markup=seedance_generate_menu(back_callback=back_callback)
     )
 
