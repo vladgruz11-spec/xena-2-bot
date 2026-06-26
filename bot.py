@@ -42,6 +42,10 @@ SEEDANCE_PRICE_IMAGE_URL = "https://raw.githubusercontent.com/vladgruz11-spec/xe
 user_states = {}
 ADMIN_IDS = {6164104276}
 
+PARTNER_BONUS_PERCENT = 10
+REFERRED_FIRST_TOPUP_BONUS_PERCENT = 5
+MAX_BONUS_PAYMENT_PERCENT = 30
+
 # Цены Seedance 2.0. Ключи: режим -> разрешение -> длительность.
 # 4K временно убран из интерфейса.
 SEEDANCE_PRICES = {
@@ -199,7 +203,8 @@ def init_db():
         "ALTER TABLE users ADD COLUMN username TEXT",
         "ALTER TABLE users ADD COLUMN referrer_id INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN ref_mode TEXT DEFAULT ''",
-        "ALTER TABLE users ADD COLUMN partner_balance INTEGER DEFAULT 0"
+        "ALTER TABLE users ADD COLUMN partner_balance INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN total_deposits INTEGER DEFAULT 0"
     ]:
         try:
             cur.execute(sql)
@@ -220,6 +225,20 @@ def get_user(user_id: int):
         row = (0, 0)
     conn.close()
     return row
+
+
+def get_user_balances(user_id: int):
+    """Возвращает основной баланс и бонусы пользователя."""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("SELECT paid_credits, partner_balance FROM users WHERE user_id = ?", (user_id,))
+    row = cur.fetchone()
+    if row is None:
+        cur.execute("INSERT INTO users (user_id, free_used, paid_credits, partner_balance) VALUES (?, 0, 0, 0)", (user_id,))
+        conn.commit()
+        row = (0, 0)
+    conn.close()
+    return row[0] or 0, row[1] or 0
 
 
 def save_username(user_id: int, username):
@@ -247,10 +266,24 @@ def get_user_id_by_username(username: str):
 
 
 def give_balance(user_id: int, amount: int):
+    if amount <= 0:
+        return
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute("INSERT OR IGNORE INTO users (user_id, free_used, paid_credits) VALUES (?, 0, 0)", (user_id,))
     cur.execute("UPDATE users SET paid_credits = paid_credits + ? WHERE user_id = ?", (amount, user_id))
+    conn.commit()
+    conn.close()
+
+
+def add_bonus(user_id: int, amount: int):
+    """Начисляет бонусы. Бонусы нельзя вывести, ими можно оплатить часть генерации."""
+    if amount <= 0:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("INSERT OR IGNORE INTO users (user_id, free_used, paid_credits, partner_balance) VALUES (?, 0, 0, 0)", (user_id,))
+    cur.execute("UPDATE users SET partner_balance = partner_balance + ? WHERE user_id = ?", (amount, user_id))
     conn.commit()
     conn.close()
 
@@ -262,38 +295,6 @@ def reset_user_balance(user_id: int):
     cur.execute("UPDATE users SET paid_credits = 0 WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
-
-
-def decrement_paid_credit(user_id: int, amount: int):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE users SET paid_credits = paid_credits - ? WHERE user_id = ? AND paid_credits >= ?",
-        (amount, user_id, amount)
-    )
-    conn.commit()
-    conn.close()
-
-
-def charge_user_balance(user_id: int, amount: int) -> bool:
-    """Атомарно списывает деньги. Возвращает True, если списание прошло."""
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE users SET paid_credits = paid_credits - ? WHERE user_id = ? AND paid_credits >= ?",
-        (amount, user_id, amount)
-    )
-    charged = cur.rowcount == 1
-    conn.commit()
-    conn.close()
-    return charged
-
-
-def refund_user_balance(user_id: int, amount: int):
-    """Возвращает деньги пользователю на баланс."""
-    if amount <= 0:
-        return
-    give_balance(user_id, amount)
 
 
 def set_referrer(user_id: int, referrer_id: int, ref_mode: str):
@@ -311,33 +312,133 @@ def set_referrer(user_id: int, referrer_id: int, ref_mode: str):
     conn.close()
 
 
-def add_partner_money(user_id: int, amount: int):
+def process_successful_deposit(user_id: int, amount: int):
+    """
+    Обрабатывает успешное пополнение:
+    - основной баланс пользователя пополняется на всю сумму;
+    - партнёр получает 10% бонусами от пополнения приглашённого;
+    - приглашённый пользователь получает +5% бонусами только на первое пополнение.
+    """
+    if amount <= 0:
+        return {"first_deposit": False, "user_bonus": 0, "partner_bonus": 0, "referrer_id": 0}
+
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    cur.execute("UPDATE users SET partner_balance = partner_balance + ? WHERE user_id = ?", (amount, user_id))
+    cur.execute("INSERT OR IGNORE INTO users (user_id, free_used, paid_credits, partner_balance, total_deposits) VALUES (?, 0, 0, 0, 0)", (user_id,))
+    cur.execute("SELECT total_deposits, referrer_id FROM users WHERE user_id = ?", (user_id,))
+    row = cur.fetchone() or (0, 0)
+    total_deposits = row[0] or 0
+    referrer_id = row[1] or 0
+    first_deposit = total_deposits <= 0
+
+    user_bonus = int(amount * REFERRED_FIRST_TOPUP_BONUS_PERCENT / 100) if first_deposit and referrer_id else 0
+    partner_bonus = int(amount * PARTNER_BONUS_PERCENT / 100) if referrer_id else 0
+
+    cur.execute(
+        """
+        UPDATE users
+        SET paid_credits = paid_credits + ?,
+            partner_balance = partner_balance + ?,
+            total_deposits = total_deposits + ?
+        WHERE user_id = ?
+        """,
+        (amount, user_bonus, amount, user_id)
+    )
+
+    if referrer_id and partner_bonus > 0:
+        cur.execute("INSERT OR IGNORE INTO users (user_id, free_used, paid_credits, partner_balance, total_deposits) VALUES (?, 0, 0, 0, 0)", (referrer_id,))
+        cur.execute("UPDATE users SET partner_balance = partner_balance + ? WHERE user_id = ?", (partner_bonus, referrer_id))
+
     conn.commit()
     conn.close()
+    return {
+        "first_deposit": first_deposit,
+        "user_bonus": user_bonus,
+        "partner_bonus": partner_bonus,
+        "referrer_id": referrer_id,
+    }
 
 
-def apply_deposit_bonus(user_id: int, amount: int):
+def bonus_allowed_for_price(price: int) -> int:
+    return int(price * MAX_BONUS_PAYMENT_PERCENT / 100)
+
+
+def calculate_generation_payment(user_id: int, price: int):
+    paid_balance, bonus_balance = get_user_balances(user_id)
+    bonus_to_use = min(bonus_balance, bonus_allowed_for_price(price))
+    paid_to_use = price - bonus_to_use
+    return {
+        "price": price,
+        "paid_balance": paid_balance,
+        "bonus_balance": bonus_balance,
+        "paid_to_use": paid_to_use,
+        "bonus_to_use": bonus_to_use,
+        "can_pay": paid_balance >= paid_to_use,
+    }
+
+
+def charge_user_for_generation(user_id: int, price: int):
+    """
+    Списывает стоимость генерации: до 30% бонусами, остальное основным балансом.
+    Возвращает (True, paid_used, bonus_used) или (False, paid_needed, bonus_can_use).
+    """
+    payment = calculate_generation_payment(user_id, price)
+    if not payment["can_pay"]:
+        return False, payment["paid_to_use"], payment["bonus_to_use"]
+
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    cur.execute("SELECT referrer_id FROM users WHERE user_id = ?", (user_id,))
-    row = cur.fetchone()
+    cur.execute(
+        """
+        UPDATE users
+        SET paid_credits = paid_credits - ?,
+            partner_balance = partner_balance - ?
+        WHERE user_id = ?
+          AND paid_credits >= ?
+          AND partner_balance >= ?
+        """,
+        (payment["paid_to_use"], payment["bonus_to_use"], user_id, payment["paid_to_use"], payment["bonus_to_use"])
+    )
+    charged = cur.rowcount == 1
+    conn.commit()
     conn.close()
-    if row and row[0]:
-        bonus = int(amount * 0.7)
-        if bonus > 0:
-            add_partner_money(row[0], bonus)
+    return charged, payment["paid_to_use"], payment["bonus_to_use"]
+
+
+def refund_generation_payment(user_id: int, paid_amount: int, bonus_amount: int):
+    if paid_amount > 0:
+        give_balance(user_id, paid_amount)
+    if bonus_amount > 0:
+        add_bonus(user_id, bonus_amount)
+
+
+def get_bonus_balance(user_id: int):
+    _, bonus = get_user_balances(user_id)
+    return bonus
 
 
 def get_partner_balance(user_id: int):
+    return get_bonus_balance(user_id)
+
+
+def get_referral_stats(user_id: int):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    cur.execute("SELECT partner_balance FROM users WHERE user_id = ?", (user_id,))
-    row = cur.fetchone()
+    cur.execute(
+        """
+        SELECT user_id, username, total_deposits
+        FROM users
+        WHERE referrer_id = ?
+        ORDER BY total_deposits DESC, user_id DESC
+        """,
+        (user_id,)
+    )
+    rows = cur.fetchall()
     conn.close()
-    return row[0] if row else 0
+    total = len(rows)
+    active = sum(1 for _, _, deposits in rows if (deposits or 0) > 0)
+    deposit_sum = sum((deposits or 0) for _, _, deposits in rows)
+    return {"total": total, "active": active, "deposit_sum": deposit_sum, "rows": rows}
 
 
 def get_all_partners():
@@ -360,7 +461,6 @@ def reset_partner_balance(user_id: int):
     cur.execute("UPDATE users SET partner_balance = 0 WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
-
 
 # ========================= KIE =========================
 
@@ -713,9 +813,9 @@ async def partners(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not rows:
         await update.message.reply_text("Партнёров с балансом нет.")
         return
-    text = "💼 Партнёрские выплаты:\n\n"
+    text = "💼 Партнёрские бонусы:\n\n"
     for user_id, username, balance in rows:
-        text += f"ID: {user_id}\n@{username or 'без username'}\nК выплате: {balance} ₽\n\n"
+        text += f"ID: {user_id}\n@{username or 'без username'}\nБонусы: {balance} ₽\n\n"
     await update.message.reply_text(text)
 
 
@@ -931,21 +1031,55 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     if action == "profile":
-        _, paid_credits = get_user(user_id)
-        await chat.send_message(f"👤 Твой баланс:\n\nБаланс: {paid_credits} ₽", reply_markup=back_to_menu_keyboard())
+        paid_credits, bonus_balance = get_user_balances(user_id)
+        await chat.send_message(
+            f"👤 Твой баланс:\n\n"
+            f"Баланс: {paid_credits} ₽\n"
+            f"Бонусы: {bonus_balance}\n\n"
+            f"Бонусами можно оплатить до {MAX_BONUS_PAYMENT_PERCENT}% стоимости генерации.",
+            reply_markup=back_to_menu_keyboard()
+        )
         return
 
     if action == "partner":
         bot_info = await context.bot.get_me()
         await chat.send_message(
-            "🤝 Партнерка\n\nЗа каждого приведенного активного пользователя вы будете получать бонусы на свой бонусный счет.\n\n"
-            f"Ваша реферальная ссылка:\nhttps://t.me/{bot_info.username}?start=partner_{user_id}",
+            "🤝 Партнерка Xena\n\n"
+            "Приглашайте людей по своей ссылке и получайте бонусы.\n\n"
+            f"Что вы получаете:\n"
+            f"• {PARTNER_BONUS_PERCENT}% бонусами от каждого пополнения приглашённого пользователя.\n"
+            f"• Бонусы можно тратить внутри бота на генерации.\n"
+            f"• Бонусами можно оплатить до {MAX_BONUS_PAYMENT_PERCENT}% стоимости генерации.\n\n"
+            f"Что получает приглашённый:\n"
+            f"• +{REFERRED_FIRST_TOPUP_BONUS_PERCENT}% бонусами к первому пополнению.\n\n"
+            f"В Кабинете партнёра можно смотреть бонусы и список приглашённых пользователей.\n\n"
+            f"Ваша ссылка:\nhttps://t.me/{bot_info.username}?start=partner_{user_id}",
             reply_markup=back_to_menu_keyboard()
         )
         return
 
     if action == "partner_profile":
-        await chat.send_message(f"💼 Кабинет партнера\n\nБонусный счет: {get_partner_balance(user_id)} бонусов\n\n1 бонус = 1 ₽.", reply_markup=back_to_menu_keyboard())
+        stats = get_referral_stats(user_id)
+        bonus_balance = get_bonus_balance(user_id)
+        if stats["rows"]:
+            lines = []
+            for ref_user_id, username, deposits in stats["rows"][:15]:
+                name = f"@{username}" if username else f"ID {ref_user_id}"
+                status = f"пополнений: {deposits or 0} ₽" if (deposits or 0) > 0 else "пока без пополнений"
+                lines.append(f"• {name} — {status}")
+            referrals_text = "\n".join(lines)
+        else:
+            referrals_text = "Пока нет приглашённых пользователей."
+
+        await chat.send_message(
+            f"💼 Кабинет партнёра\n\n"
+            f"Бонусы: {bonus_balance}\n"
+            f"Приглашено всего: {stats['total']}\n"
+            f"С пополнениями: {stats['active']}\n"
+            f"Сумма пополнений приглашённых: {stats['deposit_sum']} ₽\n\n"
+            f"Приглашённые пользователи:\n{referrals_text}",
+            reply_markup=back_to_menu_keyboard()
+        )
         return
 
     if action == "help":
@@ -976,10 +1110,15 @@ async def handle_seedance_generate(chat, user_id: int):
         await chat.send_message("Цена для выбранных настроек пока не задана.", reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2"))
         return
 
-    _, paid_credits = get_user(user_id)
-    if paid_credits < price:
+    payment = calculate_generation_payment(user_id, price)
+    if not payment["can_pay"]:
         await chat.send_message(
-            f"💳 Недостаточно средств.\n\nСтоимость: {price} ₽\nВаш баланс: {paid_credits} ₽",
+            f"💳 Недостаточно средств.\n\n"
+            f"Стоимость: {price} ₽\n"
+            f"Ваш баланс: {payment['paid_balance']} ₽\n"
+            f"Ваши бонусы: {payment['bonus_balance']}\n\n"
+            f"Бонусами можно покрыть до {MAX_BONUS_PAYMENT_PERCENT}% стоимости.\n"
+            f"Для этой генерации нужно с баланса: {payment['paid_to_use']} ₽.",
             reply_markup=navigation_keyboard([[InlineKeyboardButton("💳 ПОПОЛНИТЬ БАЛАНС", callback_data="buy")]], back_callback="model_seedance_2")
         )
         return
@@ -990,16 +1129,14 @@ async def handle_seedance_generate(chat, user_id: int):
     )
 
     charged = False
+    paid_charged = 0
+    bonus_charged = 0
     task_id = None
 
     try:
-        # 1. Сначала отправляем задачу в Kie.
-        # Если Kie не принял задачу и taskId не создан — деньги не списываем.
         task_id = create_seedance_task(settings)
 
-        # 2. Как только Kie подтвердил задачу и вернул taskId — сразу списываем деньги в боте.
-        # Это защищает от ситуации, когда Kie уже начал платную генерацию, а баланс клиента не списался.
-        charged = charge_user_balance(user_id, price)
+        charged, paid_charged, bonus_charged = charge_user_for_generation(user_id, price)
         if not charged:
             await chat.send_message(
                 "💳 Недостаточно средств.\n\n"
@@ -1024,8 +1161,6 @@ async def handle_seedance_generate(chat, user_id: int):
                     pool_timeout=3600
                 )
         except Exception as e:
-            # Kie уже успешно сгенерировал видео, значит деньги на Kie могли быть списаны.
-            # Пользователю деньги не возвращаем, а отправляем в поддержку.
             print("TELEGRAM_SEND_VIDEO_ERROR:", repr(e))
             await chat.send_message(
                 "⚠️ Видео было создано, но Telegram не смог отправить его в чат.\n\n"
@@ -1034,19 +1169,20 @@ async def handle_seedance_generate(chat, user_id: int):
                 disable_web_page_preview=True
             )
 
-        _, paid_after = get_user(user_id)
-        await chat.send_message(f"Баланс: {paid_after} ₽", reply_markup=back_to_menu_keyboard(back_callback="main_menu"))
+        paid_after, bonus_after = get_user_balances(user_id)
+        await chat.send_message(
+            f"Баланс: {paid_after} ₽\nБонусы: {bonus_after}",
+            reply_markup=back_to_menu_keyboard(back_callback="main_menu")
+        )
 
     except KieTaskCreateError as e:
-        # Kie не подтвердил задачу, taskId не создан. Денег Kie списать не должен, баланс клиента не трогаем.
         print("SEEDANCE_TASK_CREATE_ERROR:", repr(e))
         await send_kie_error(chat, back_callback="model_seedance_2")
 
     except KieGenerationFailed as e:
-        # Kie принял задачу, но вернул fail. В таком случае возвращаем клиенту деньги.
         print("SEEDANCE_KIE_FAILED:", repr(e))
         if charged:
-            refund_user_balance(user_id, price)
+            refund_generation_payment(user_id, paid_charged, bonus_charged)
         await chat.send_message(
             "❌ Ошибка генерации. Деньги возвращены на баланс.\n\n"
             "Если проблема повторяется — свяжитесь с поддержкой.",
@@ -1055,8 +1191,6 @@ async def handle_seedance_generate(chat, user_id: int):
         )
 
     except KieGenerationTimeout as e:
-        # Таймаут не означает, что Kie не списал деньги: задача могла продолжать выполняться.
-        # Поэтому деньги не возвращаем автоматически, чтобы не было ситуации: Kie списал, а клиент нет.
         print("SEEDANCE_KIE_TIMEOUT:", repr(e))
         await chat.send_message(
             "⚠️ Генерация заняла слишком много времени.\n\n"
@@ -1066,8 +1200,6 @@ async def handle_seedance_generate(chat, user_id: int):
         )
 
     except Exception as e:
-        # Неизвестная ошибка после создания задачи может быть связана с Telegram/Render/загрузкой результата.
-        # Если Kie уже получил задачу, деньги не возвращаем автоматически.
         import traceback
         print("SEEDANCE_GENERATION_ERROR:", repr(e))
         traceback.print_exc()
@@ -1122,14 +1254,20 @@ async def handle_checkpay(chat, user_id: int, action: str):
         )
         return
 
-    give_balance(user_id, amount)
-    apply_deposit_bonus(user_id, amount)
-    _, paid_credits = get_user(user_id)
+    deposit_info = process_successful_deposit(user_id, amount)
+    paid_credits, bonus_balance = get_user_balances(user_id)
+    bonus_note = ""
+    if deposit_info.get("user_bonus", 0) > 0:
+        bonus_note += f"\nБонус за первое пополнение: +{deposit_info['user_bonus']}"
+    if deposit_info.get("partner_bonus", 0) > 0:
+        bonus_note += f"\nПартнёру начислено: +{deposit_info['partner_bonus']} бонусов"
 
     if return_to_seedance:
         user_states.pop(user_id, None)
         await chat.send_message(
-            f"✅ Баланс пополнен на {amount} ₽.\nТекущий баланс: {paid_credits} ₽.",
+            f"✅ Баланс пополнен на {amount} ₽.\n"
+            f"Текущий баланс: {paid_credits} ₽.\n"
+            f"Бонусы: {bonus_balance}{bonus_note}",
             reply_markup=navigation_keyboard(
                 [[InlineKeyboardButton("🎬 Вернуться к выбору режимов", callback_data="model_seedance_2")]],
                 back_callback="main_menu"
@@ -1138,7 +1276,10 @@ async def handle_checkpay(chat, user_id: int, action: str):
         return
 
     await chat.send_message(
-        f"✅ Оплата получена!\n\nБаланс пополнен на {amount} ₽.\nТекущий баланс: {paid_credits} ₽.",
+        f"✅ Оплата получена!\n\n"
+        f"Баланс пополнен на {amount} ₽.\n"
+        f"Текущий баланс: {paid_credits} ₽.\n"
+        f"Бонусы: {bonus_balance}{bonus_note}",
         reply_markup=back_to_menu_keyboard()
     )
 
@@ -1273,11 +1414,18 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     payload = update.message.successful_payment.invoice_payload
     if payload.startswith("topup_"):
         amount = int(payload.replace("topup_", ""))
-        give_balance(user_id, amount)
-        apply_deposit_bonus(user_id, amount)
-        _, paid_credits = get_user(user_id)
-        await update.message.reply_text(f"✅ Баланс пополнен на {amount} ₽.\n\nТекущий баланс: {paid_credits} ₽.")
-
+        deposit_info = process_successful_deposit(user_id, amount)
+        paid_credits, bonus_balance = get_user_balances(user_id)
+        bonus_note = ""
+        if deposit_info.get("user_bonus", 0) > 0:
+            bonus_note += f"\nБонус за первое пополнение: +{deposit_info['user_bonus']}"
+        if deposit_info.get("partner_bonus", 0) > 0:
+            bonus_note += f"\nПартнёру начислено: +{deposit_info['partner_bonus']} бонусов"
+        await update.message.reply_text(
+            f"✅ Баланс пополнен на {amount} ₽.\n\n"
+            f"Текущий баланс: {paid_credits} ₽.\n"
+            f"Бонусы: {bonus_balance}{bonus_note}"
+        )
 
 # ========================= MAIN =========================
 
