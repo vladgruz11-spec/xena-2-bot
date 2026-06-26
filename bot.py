@@ -37,6 +37,7 @@ DB_PATH = "/var/data/users.db"
 MAIN_MENU_PHOTO = "https://raw.githubusercontent.com/vladgruz11-spec/xena-2-bot/51586486d72bc1529924833288dadc53daa8e09c/main_menu.jpg"
 MAIN_CHANNEL_URL = "https://t.me/Xena18H"
 SUPPORT_URL = "https://t.me/Vlad101ss"
+SEEDANCE_PRICE_IMAGE_URL = "https://raw.githubusercontent.com/vladgruz11-spec/xena-2-bot/refs/heads/main/seedance_price.png"
 
 user_states = {}
 ADMIN_IDS = {6164104276}
@@ -124,19 +125,8 @@ def seedance_modes_menu():
     ], back_callback="create_video")
 
 
-def seedance_price_list_text():
-    return (
-        "💰 Прайс Seedance 2.0\n\n"
-        "🎥 Текст → Видео / 📷 Изображение → Видео\n"
-        "480p: 5с — 99 ₽ | 10с — 199 ₽ | 15с — 299 ₽\n"
-        "720p: 5с — 209 ₽ | 10с — 419 ₽ | 15с — 629 ₽\n"
-        "1080p: 5с — 429 ₽ | 10с — 849 ₽ | 15с — 1269 ₽\n\n"
-        "🎬 Изображение + Видео → Видео\n"
-        "480p: 5с — 109 ₽ | 10с — 219 ₽ | 15с — 319 ₽\n"
-        "720p: 5с — 229 ₽ | 10с — 459 ₽ | 15с — 689 ₽\n"
-        "1080p: 5с — 469 ₽ | 10с — 929 ₽ | 15с — 1389 ₽\n\n"
-        "4K временно недоступен."
-    )
+def seedance_price_caption():
+    return "💰 Прайс Seedance 2.0"
 
 
 def seedance_price_keyboard():
@@ -771,10 +761,17 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     if action == "seedance_price_list":
-        await chat.send_message(
-            seedance_price_list_text(),
-            reply_markup=seedance_price_keyboard()
-        )
+        try:
+            await chat.send_photo(
+                photo=SEEDANCE_PRICE_IMAGE_URL,
+                caption=seedance_price_caption(),
+                reply_markup=seedance_price_keyboard()
+            )
+        except Exception:
+            await chat.send_message(
+                "💰 Прайс Seedance 2.0\n\nНе удалось загрузить изображение прайса. Попробуйте открыть прайс позже или напишите в поддержку.",
+                reply_markup=support_keyboard(back_callback="model_seedance_2")
+            )
         return
 
     if action in ["model_grok_imagine_15", "model_kling_30_turbo", "model_happyhorse_11", "model_wan_27_video", "model_gemini_omni", "model_hailuo_23", "model_veo_31"]:
