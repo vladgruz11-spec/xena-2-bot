@@ -37,7 +37,7 @@ DB_PATH = "/var/data/users.db"
 MAIN_MENU_PHOTO = "https://raw.githubusercontent.com/vladgruz11-spec/xena-2-bot/51586486d72bc1529924833288dadc53daa8e09c/main_menu.jpg"
 MAIN_CHANNEL_URL = "https://t.me/Xena18H"
 SUPPORT_URL = "https://t.me/Vlad101ss"
-SEEDANCE_PRICE_IMAGE_URL = "https://raw.githubusercontent.com/vladgruz11-spec/xena-2-bot/refs/heads/main/seedance_price_v2.png"
+SEEDANCE_PRICE_IMAGE_URL = "https://raw.githubusercontent.com/vladgruz11-spec/xena-2-bot/refs/heads/main/seedance_price_v3.png"
 
 user_states = {}
 ADMIN_IDS = {6164104276}
