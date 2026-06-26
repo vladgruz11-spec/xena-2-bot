@@ -260,6 +260,27 @@ def decrement_paid_credit(user_id: int, amount: int):
     conn.close()
 
 
+def charge_user_balance(user_id: int, amount: int) -> bool:
+    """Атомарно списывает деньги. Возвращает True, если списание прошло."""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE users SET paid_credits = paid_credits - ? WHERE user_id = ? AND paid_credits >= ?",
+        (amount, user_id, amount)
+    )
+    charged = cur.rowcount == 1
+    conn.commit()
+    conn.close()
+    return charged
+
+
+def refund_user_balance(user_id: int, amount: int):
+    """Возвращает деньги пользователю на баланс."""
+    if amount <= 0:
+        return
+    give_balance(user_id, amount)
+
+
 def set_referrer(user_id: int, referrer_id: int, ref_mode: str):
     if user_id == referrer_id:
         return
@@ -328,6 +349,18 @@ def reset_partner_balance(user_id: int):
 
 # ========================= KIE =========================
 
+class KieTaskCreateError(Exception):
+    """Kie не принял задачу, taskId не создан."""
+
+
+class KieGenerationFailed(Exception):
+    """Kie принял задачу, но вернул ошибку генерации."""
+
+
+class KieGenerationTimeout(Exception):
+    """Kie принял задачу, но результат не был получен за время ожидания."""
+
+
 def upload_file_to_kie(file_path: str, upload_path: str) -> str:
     url = "https://kieai.redpandaai.co/api/file-stream-upload"
     headers = {"Authorization": f"Bearer {KIE_API_KEY}"}
@@ -383,12 +416,23 @@ def create_seedance_task(settings: dict) -> str:
     url = "https://api.kie.ai/api/v1/jobs/createTask"
     headers = {"Authorization": f"Bearer {KIE_API_KEY}", "Content-Type": "application/json"}
     payload = build_seedance_payload(settings)
-    response = requests.post(url, headers=headers, json=payload, timeout=3600)
-    response.raise_for_status()
-    result = response.json()
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=120)
+        response.raise_for_status()
+        result = response.json()
+    except Exception as e:
+        # Задача не подтверждена Kie, taskId нет. Деньги пользователю не списываем.
+        raise KieTaskCreateError(str(e))
+
     if result.get("code") != 200:
-        raise RuntimeError(f"Ошибка создания задачи Seedance: {result}")
-    return result["data"]["taskId"]
+        # Kie отклонил задачу до создания taskId. Деньги пользователю не списываем.
+        raise KieTaskCreateError(f"Ошибка создания задачи Seedance: {result}")
+
+    try:
+        return result["data"]["taskId"]
+    except Exception:
+        raise KieTaskCreateError(f"Kie не вернул taskId: {result}")
 
 
 def wait_kie_video_result(task_id: str) -> str:
@@ -408,9 +452,9 @@ def wait_kie_video_result(task_id: str) -> str:
                 raise RuntimeError(f"Видео готово, но ссылка не найдена: {result_json}")
             return video_urls[0]
         if state == "fail":
-            raise RuntimeError(f"Kie не смог сгенерировать видео: {data.get('failMsg')}")
+            raise KieGenerationFailed(f"Kie не смог сгенерировать видео: {data.get('failMsg')}")
         time.sleep(10)
-    raise RuntimeError("Видео генерировалось слишком долго.")
+    raise KieGenerationTimeout("Видео генерировалось слишком долго.")
 
 
 def download_video(video_url: str, user_id: int) -> str:
@@ -883,11 +927,14 @@ async def handle_seedance_generate(chat, user_id: int):
     if user_id not in user_states:
         await chat.send_message("Сначала настройте генерацию.", reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2"))
         return
+
     settings = user_states[user_id]
     price = seedance_price(settings)
+
     if price <= 0:
         await chat.send_message("Цена для выбранных настроек пока не задана.", reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2"))
         return
+
     _, paid_credits = get_user(user_id)
     if paid_credits < price:
         await chat.send_message(
@@ -895,30 +942,96 @@ async def handle_seedance_generate(chat, user_id: int):
             reply_markup=navigation_keyboard([[InlineKeyboardButton("💳 ПОПОЛНИТЬ БАЛАНС", callback_data="buy")]], back_callback="model_seedance_2")
         )
         return
-    await chat.send_message("🎬 Генерация запущена.\n\nОбычно это занимает несколько минут. Если нейросеть перегружена, ожидание может продлиться до 30 минут.")
-    task_created = False
+
+    await chat.send_message(
+        "🎬 Генерация запущена.\n\n"
+        "Обычно это занимает несколько минут. Если нейросеть перегружена, ожидание может продлиться до 30 минут."
+    )
+
+    charged = False
+    task_id = None
+
     try:
+        # 1. Сначала отправляем задачу в Kie.
+        # Если Kie не принял задачу и taskId не создан — деньги не списываем.
         task_id = create_seedance_task(settings)
-        task_created = True
-        decrement_paid_credit(user_id, price)
+
+        # 2. Как только Kie подтвердил задачу и вернул taskId — сразу списываем деньги в боте.
+        # Это защищает от ситуации, когда Kie уже начал платную генерацию, а баланс клиента не списался.
+        charged = charge_user_balance(user_id, price)
+        if not charged:
+            await chat.send_message(
+                "💳 Недостаточно средств.\n\n"
+                "Задача уже была отправлена в нейросеть, но списание с баланса не прошло. Свяжитесь с поддержкой.",
+                reply_markup=support_keyboard(back_callback="model_seedance_2"),
+                disable_web_page_preview=True
+            )
+            user_states.pop(user_id, None)
+            return
+
         video_url = wait_kie_video_result(task_id)
         video_path = download_video(video_url, user_id)
-        with open(video_path, "rb") as video_file:
-            await chat.send_video(
-                video=video_file,
-                caption="✅ Готово! Вот ваше видео.",
-                read_timeout=3600,
-                write_timeout=3600,
-                connect_timeout=60,
-                pool_timeout=3600
+
+        try:
+            with open(video_path, "rb") as video_file:
+                await chat.send_video(
+                    video=video_file,
+                    caption="✅ Готово! Вот ваше видео.",
+                    read_timeout=3600,
+                    write_timeout=3600,
+                    connect_timeout=60,
+                    pool_timeout=3600
+                )
+        except Exception as e:
+            # Kie уже успешно сгенерировал видео, значит деньги на Kie могли быть списаны.
+            # Пользователю деньги не возвращаем, а отправляем в поддержку.
+            print("TELEGRAM_SEND_VIDEO_ERROR:", repr(e))
+            await chat.send_message(
+                "⚠️ Видео было создано, но Telegram не смог отправить его в чат.\n\n"
+                "Свяжитесь с поддержкой, мы поможем получить результат.",
+                reply_markup=support_keyboard(back_callback="main_menu"),
+                disable_web_page_preview=True
             )
+
         _, paid_after = get_user(user_id)
         await chat.send_message(f"Баланс: {paid_after} ₽", reply_markup=back_to_menu_keyboard(back_callback="main_menu"))
+
+    except KieTaskCreateError as e:
+        # Kie не подтвердил задачу, taskId не создан. Денег Kie списать не должен, баланс клиента не трогаем.
+        print("SEEDANCE_TASK_CREATE_ERROR:", repr(e))
+        await send_kie_error(chat, back_callback="model_seedance_2")
+
+    except KieGenerationFailed as e:
+        # Kie принял задачу, но вернул fail. В таком случае возвращаем клиенту деньги.
+        print("SEEDANCE_KIE_FAILED:", repr(e))
+        if charged:
+            refund_user_balance(user_id, price)
+        await chat.send_message(
+            "❌ Ошибка генерации. Деньги возвращены на баланс.\n\n"
+            "Если проблема повторяется — свяжитесь с поддержкой.",
+            reply_markup=support_keyboard(back_callback="model_seedance_2"),
+            disable_web_page_preview=True
+        )
+
+    except KieGenerationTimeout as e:
+        # Таймаут не означает, что Kie не списал деньги: задача могла продолжать выполняться.
+        # Поэтому деньги не возвращаем автоматически, чтобы не было ситуации: Kie списал, а клиент нет.
+        print("SEEDANCE_KIE_TIMEOUT:", repr(e))
+        await chat.send_message(
+            "⚠️ Генерация заняла слишком много времени.\n\n"
+            "Задача могла продолжить выполняться на стороне нейросети. Свяжитесь с поддержкой, мы проверим результат.",
+            reply_markup=support_keyboard(back_callback="main_menu"),
+            disable_web_page_preview=True
+        )
+
     except Exception as e:
+        # Неизвестная ошибка после создания задачи может быть связана с Telegram/Render/загрузкой результата.
+        # Если Kie уже получил задачу, деньги не возвращаем автоматически.
         import traceback
         print("SEEDANCE_GENERATION_ERROR:", repr(e))
         traceback.print_exc()
         await send_kie_error(chat, back_callback="model_seedance_2")
+
     finally:
         user_states.pop(user_id, None)
 
