@@ -6,69 +6,106 @@ import mimetypes
 import requests
 from pathlib import Path
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    PreCheckoutQueryHandler,
     CallbackQueryHandler,
     ContextTypes,
     filters,
 )
 
+# =========================
+# ENV
+# =========================
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 KIE_API_KEY = os.getenv("KIE_API_KEY")
+
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN не найден!")
+
 if not KIE_API_KEY:
     raise RuntimeError("KIE_API_KEY не найден!")
+
 if not YOOKASSA_SHOP_ID:
     raise RuntimeError("YOOKASSA_SHOP_ID не найден!")
+
 if not YOOKASSA_SECRET_KEY:
     raise RuntimeError("YOOKASSA_SECRET_KEY не найден!")
+
+
+# =========================
+# CONSTANTS
+# =========================
 
 MEDIA_DIR = Path("media")
 MEDIA_DIR.mkdir(exist_ok=True)
 
 DB_PATH = "/var/data/users.db"
+
 MAIN_MENU_PHOTO = "https://raw.githubusercontent.com/vladgruz11-spec/xena-2-bot/51586486d72bc1529924833288dadc53daa8e09c/main_menu.jpg"
 MAIN_CHANNEL_URL = "https://t.me/Xena18H"
 SUPPORT_URL = "https://t.me/Vlad101ss"
-BOT_RETURN_URL = "https://t.me/Xena18Bot"
 
 ADMIN_IDS = {6164104276}
 
+# ВАЖНО:
+# Это временные цены Seedance. Когда определишься со стоимостью разных режимов,
+# меняй суммы здесь.
+SEEDANCE_PRICES = {
+    "text_to_video": {
+        "5": 98,
+        "10": 147,
+        "15": 196,
+    },
+    "image_to_video": {
+        "5": 98,
+        "10": 147,
+        "15": 196,
+    },
+    "image_video_to_video": {
+        "5": 98,
+        "10": 147,
+        "15": 196,
+    },
+}
+
+# Старые цены оставлены для совместимости с балансом/профилем
 VIDEO_PRICES = {
     "5": 98,
     "10": 147,
     "15": 196,
 }
 
-TOPUP_AMOUNTS = [250, 500, 1000, 5000]
-
+# Состояния пользователей во время пошаговой генерации
 user_states = {}
 
 
 # =========================
-# КЛАВИАТУРЫ
+# KEYBOARDS
 # =========================
 
 def navigation_keyboard(buttons, back_callback="main_menu"):
-    keyboard = list(buttons)
-    keyboard.append([InlineKeyboardButton("⬅️ НАЗАД", callback_data=back_callback)])
-    keyboard.append([InlineKeyboardButton("🏠 ГЛАВНОЕ МЕНЮ", callback_data="main_menu")])
-    return InlineKeyboardMarkup(keyboard)
+    buttons.append([InlineKeyboardButton("⬅️ НАЗАД", callback_data=back_callback)])
+    buttons.append([InlineKeyboardButton("🏠 ГЛАВНОЕ МЕНЮ", callback_data="main_menu")])
+    return InlineKeyboardMarkup(buttons)
 
 
 def back_to_menu_keyboard(back_callback="main_menu"):
-    return navigation_keyboard([], back_callback=back_callback)
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬅️ НАЗАД", callback_data=back_callback)],
+        [InlineKeyboardButton("🏠 ГЛАВНОЕ МЕНЮ", callback_data="main_menu")]
+    ])
 
 
 def main_inline_menu():
-    return InlineKeyboardMarkup([
+    keyboard = [
         [InlineKeyboardButton("🎬 Создать ВИДЕО", callback_data="create_video")],
         [InlineKeyboardButton("🖼 Создать ИЗОБРАЖЕНИЕ", callback_data="create_image")],
         [InlineKeyboardButton("🎵 Создать АУДИО", callback_data="create_audio")],
@@ -77,20 +114,23 @@ def main_inline_menu():
         [InlineKeyboardButton("🤝 Партнерка", callback_data="partner")],
         [InlineKeyboardButton("💼 Кабинет партнера", callback_data="partner_profile")],
         [InlineKeyboardButton("📘 Инструкция", callback_data="help")],
-        [InlineKeyboardButton("🆘 Поддержка", url=SUPPORT_URL)],
-    ])
+        [InlineKeyboardButton("🆘 Поддержка", url=SUPPORT_URL)]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 
 def topup_inline_menu():
-    return navigation_keyboard(
-        [[InlineKeyboardButton(f"{amount} ₽", callback_data=f"topup_{amount}")]
-         for amount in TOPUP_AMOUNTS],
-        back_callback="main_menu"
-    )
+    keyboard = [
+        [InlineKeyboardButton("250 ₽", callback_data="topup_250")],
+        [InlineKeyboardButton("500 ₽", callback_data="topup_500")],
+        [InlineKeyboardButton("1000 ₽", callback_data="topup_1000")],
+        [InlineKeyboardButton("5000 ₽", callback_data="topup_5000")]
+    ]
+    return navigation_keyboard(keyboard, back_callback="main_menu")
 
 
 def video_models_menu():
-    return navigation_keyboard([
+    keyboard = [
         [InlineKeyboardButton("🎬 Seedance 2.0", callback_data="model_seedance_2")],
         [InlineKeyboardButton("🧠 Grok Imagine Video 1.5", callback_data="model_grok_imagine_15")],
         [InlineKeyboardButton("⚡ Kling 3.0 Turbo", callback_data="model_kling_30_turbo")],
@@ -98,62 +138,73 @@ def video_models_menu():
         [InlineKeyboardButton("🎞 Wan 2.7 Video", callback_data="model_wan_27_video")],
         [InlineKeyboardButton("💎 Gemini Omni", callback_data="model_gemini_omni")],
         [InlineKeyboardButton("🌊 Hailuo 2.3", callback_data="model_hailuo_23")],
-        [InlineKeyboardButton("🎥 Veo 3.1", callback_data="model_veo_31")],
-    ], back_callback="main_menu")
+        [InlineKeyboardButton("🎥 Veo 3.1", callback_data="model_veo_31")]
+    ]
+    return navigation_keyboard(keyboard, back_callback="main_menu")
 
 
 def seedance_modes_menu():
-    return navigation_keyboard([
+    keyboard = [
         [InlineKeyboardButton("🎥 Текст → Видео", callback_data="seedance_text_video")],
         [InlineKeyboardButton("🖼 Картинка → Видео", callback_data="seedance_image_video")],
-        [InlineKeyboardButton("🖼🎬 Картинка + Видео → Видео", callback_data="seedance_image_video_to_video")],
-    ], back_callback="create_video")
+        [InlineKeyboardButton("🖼🎬 Картинка + Видео → Видео", callback_data="seedance_image_video_to_video")]
+    ]
+    return navigation_keyboard(keyboard, back_callback="create_video")
 
 
-def audio_menu(back_callback):
-    return navigation_keyboard([
+def seedance_audio_menu(back_callback="model_seedance_2"):
+    keyboard = [
         [InlineKeyboardButton("🔊 Сгенерировать AI-звук", callback_data="seedance_audio_ai")],
         [InlineKeyboardButton("🎵 Добавить своё аудио", callback_data="seedance_audio_custom")],
-        [InlineKeyboardButton("🔇 Без звука", callback_data="seedance_audio_off")],
-    ], back_callback=back_callback)
+        [InlineKeyboardButton("🔇 Без звука", callback_data="seedance_audio_off")]
+    ]
+    return navigation_keyboard(keyboard, back_callback=back_callback)
 
 
-def resolution_menu(back_callback):
-    return navigation_keyboard([
+def seedance_resolution_menu():
+    keyboard = [
         [InlineKeyboardButton("480p", callback_data="seedance_resolution_480p")],
         [InlineKeyboardButton("720p", callback_data="seedance_resolution_720p")],
         [InlineKeyboardButton("1080p", callback_data="seedance_resolution_1080p")],
-        [InlineKeyboardButton("4K", callback_data="seedance_resolution_4K")],
-    ], back_callback=back_callback)
+        [InlineKeyboardButton("4K", callback_data="seedance_resolution_4k")]
+    ]
+    return navigation_keyboard(keyboard, back_callback="seedance_back_audio")
 
 
-def aspect_ratio_menu(back_callback):
-    return navigation_keyboard([
+def seedance_aspect_menu():
+    keyboard = [
         [InlineKeyboardButton("16:9", callback_data="seedance_aspect_16_9")],
         [InlineKeyboardButton("4:3", callback_data="seedance_aspect_4_3")],
         [InlineKeyboardButton("1:1", callback_data="seedance_aspect_1_1")],
         [InlineKeyboardButton("3:4", callback_data="seedance_aspect_3_4")],
         [InlineKeyboardButton("9:16", callback_data="seedance_aspect_9_16")],
-        [InlineKeyboardButton("21:9", callback_data="seedance_aspect_21_9")],
-    ], back_callback=back_callback)
+        [InlineKeyboardButton("21:9", callback_data="seedance_aspect_21_9")]
+    ]
+    return navigation_keyboard(keyboard, back_callback="seedance_back_resolution")
 
 
-def duration_menu(back_callback):
-    return navigation_keyboard([
+def seedance_duration_menu():
+    keyboard = [
         [InlineKeyboardButton("5 секунд", callback_data="seedance_duration_5")],
         [InlineKeyboardButton("10 секунд", callback_data="seedance_duration_10")],
-        [InlineKeyboardButton("15 секунд", callback_data="seedance_duration_15")],
-    ], back_callback=back_callback)
+        [InlineKeyboardButton("15 секунд", callback_data="seedance_duration_15")]
+    ]
+    return navigation_keyboard(keyboard, back_callback="seedance_back_aspect")
 
 
-def generate_menu(back_callback):
-    return navigation_keyboard([
+def seedance_generate_menu():
+    keyboard = [
         [InlineKeyboardButton("🎬 СОЗДАТЬ ВИДЕО", callback_data="seedance_generate")]
-    ], back_callback=back_callback)
+    ]
+    return navigation_keyboard(keyboard, back_callback="seedance_back_duration")
+
+
+def simple_stub_menu(back_callback="create_video"):
+    return navigation_keyboard([], back_callback=back_callback)
 
 
 # =========================
-# БАЗА ДАННЫХ
+# DB
 # =========================
 
 def init_db():
@@ -196,7 +247,8 @@ def get_user(user_id: int):
             (user_id,)
         )
         conn.commit()
-        free_used, paid_credits = 0, 0
+        free_used = 0
+        paid_credits = 0
     else:
         free_used, paid_credits = row
 
@@ -208,15 +260,18 @@ def save_username(user_id: int, username):
     if not username:
         return
 
-    username = username.lower()
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     cur.execute(
         "INSERT OR IGNORE INTO users (user_id, free_used, paid_credits, username) VALUES (?, 0, 0, ?)",
-        (user_id, username)
+        (user_id, username.lower())
     )
-    cur.execute("UPDATE users SET username = ? WHERE user_id = ?", (username, user_id))
+
+    cur.execute(
+        "UPDATE users SET username = ? WHERE user_id = ?",
+        (username.lower(), user_id)
+    )
 
     conn.commit()
     conn.close()
@@ -227,11 +282,16 @@ def get_user_id_by_username(username: str):
 
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
+
     cur.execute("SELECT user_id FROM users WHERE username = ?", (username,))
     row = cur.fetchone()
+
     conn.close()
 
-    return row[0] if row else None
+    if row is None:
+        return None
+
+    return row[0]
 
 
 def give_balance(user_id: int, amount: int):
@@ -242,6 +302,7 @@ def give_balance(user_id: int, amount: int):
         "INSERT OR IGNORE INTO users (user_id, free_used, paid_credits) VALUES (?, 0, 0)",
         (user_id,)
     )
+
     cur.execute(
         "UPDATE users SET paid_credits = paid_credits + ? WHERE user_id = ?",
         (amount, user_id)
@@ -249,6 +310,10 @@ def give_balance(user_id: int, amount: int):
 
     conn.commit()
     conn.close()
+
+
+def add_paid_credit(user_id: int, amount: int):
+    give_balance(user_id, amount)
 
 
 def decrement_paid_credit(user_id: int, amount: int):
@@ -293,6 +358,7 @@ def get_referrer(user_id: int):
 
     cur.execute("SELECT referrer_id, ref_mode FROM users WHERE user_id = ?", (user_id,))
     row = cur.fetchone()
+
     conn.close()
 
     if not row:
@@ -320,15 +386,50 @@ def get_partner_balance(user_id: int):
 
     cur.execute("SELECT partner_balance FROM users WHERE user_id = ?", (user_id,))
     row = cur.fetchone()
+
     conn.close()
 
-    return row[0] if row else 0
+    if row is None:
+        return 0
+
+    return row[0] or 0
 
 
 def apply_deposit_bonus(user_id: int, amount: int):
-    referrer_id, _ = get_referrer(user_id)
-    if referrer_id:
-        add_partner_money(referrer_id, int(amount * 0.7))
+    referrer_id, ref_mode = get_referrer(user_id)
+
+    if not referrer_id:
+        return
+
+    bonus = int(amount * 0.7)
+
+    if bonus > 0:
+        add_partner_money(referrer_id, bonus)
+
+
+def apply_referral_bonus(user_id: int, duration: str):
+    referrer_id, ref_mode = get_referrer(user_id)
+
+    if not referrer_id:
+        return
+
+    if ref_mode == "free":
+        bonus = VIDEO_PRICES.get(duration, 0)
+        if bonus > 0:
+            give_balance(referrer_id, bonus)
+
+    if ref_mode == "money":
+        if duration == "5":
+            bonus = 50
+        elif duration == "10":
+            bonus = 100
+        elif duration == "15":
+            bonus = 150
+        else:
+            bonus = 0
+
+        if bonus > 0:
+            add_partner_money(referrer_id, bonus)
 
 
 def get_all_partners():
@@ -341,6 +442,7 @@ def get_all_partners():
         WHERE partner_balance > 0
         ORDER BY partner_balance DESC
     """)
+
     rows = cur.fetchall()
     conn.close()
 
@@ -350,36 +452,69 @@ def get_all_partners():
 def reset_partner_balance(user_id: int):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
+
     cur.execute("UPDATE users SET partner_balance = 0 WHERE user_id = ?", (user_id,))
+
     conn.commit()
     conn.close()
 
 
 # =========================
-# KIE / SEEDANCE
+# KIE
 # =========================
 
-def kie_headers(json_content=False):
-    headers = {"Authorization": f"Bearer {KIE_API_KEY}"}
-    if json_content:
-        headers["Content-Type"] = "application/json"
-    return headers
+def guess_mime_type(file_path: str) -> str:
+    mime_type, _ = mimetypes.guess_type(file_path)
+
+    if mime_type:
+        return mime_type
+
+    suffix = Path(file_path).suffix.lower()
+
+    if suffix in [".jpg", ".jpeg"]:
+        return "image/jpeg"
+    if suffix == ".png":
+        return "image/png"
+    if suffix == ".webp":
+        return "image/webp"
+    if suffix == ".mp4":
+        return "video/mp4"
+    if suffix in [".mov", ".qt"]:
+        return "video/quicktime"
+    if suffix in [".mp3", ".mpeg"]:
+        return "audio/mpeg"
+    if suffix == ".wav":
+        return "audio/wav"
+    if suffix == ".ogg":
+        return "audio/ogg"
+    if suffix == ".aac":
+        return "audio/aac"
+
+    return "application/octet-stream"
 
 
-def upload_file_to_kie(file_path: str, upload_path: str = "xena-bot") -> str:
+def upload_file_to_kie(file_path: str, upload_folder: str = "xena-seedance") -> str:
     url = "https://kieai.redpandaai.co/api/file-stream-upload"
+
+    headers = {
+        "Authorization": f"Bearer {KIE_API_KEY}"
+    }
+
     path = Path(file_path)
-    mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    mime_type = guess_mime_type(file_path)
 
     with open(file_path, "rb") as f:
-        files = {"file": (path.name, f, mime_type)}
-        data = {
-            "uploadPath": upload_path,
-            "fileName": path.name,
+        files = {
+            "file": (path.name, f, mime_type)
         }
+        data = {
+            "uploadPath": upload_folder,
+            "fileName": path.name
+        }
+
         response = requests.post(
             url,
-            headers=kie_headers(),
+            headers=headers,
             files=files,
             data=data,
             timeout=3600
@@ -394,71 +529,117 @@ def upload_file_to_kie(file_path: str, upload_path: str = "xena-bot") -> str:
     return result["data"]["downloadUrl"]
 
 
-def create_seedance_video_task(settings: dict) -> str:
-    url = "https://api.kie.ai/api/v1/jobs/createTask"
+def build_seedance_input(settings: dict) -> dict:
+    mode = settings.get("mode")
 
-    input_data = {
-        "prompt": settings.get("prompt", ""),
-        "generate_audio": bool(settings.get("generate_audio", False)),
+    payload_input = {
+        "prompt": settings["prompt"],
+        "generate_audio": settings.get("generate_audio", False),
         "resolution": settings.get("resolution", "480p"),
         "aspect_ratio": settings.get("aspect_ratio", "9:16"),
         "duration": int(settings.get("duration", "5")),
     }
 
-    if settings.get("first_frame_url"):
-        input_data["first_frame_url"] = settings["first_frame_url"]
+    # Пользователь загрузил своё аудио
+    if settings.get("audio_mode") == "custom" and settings.get("reference_audio_urls"):
+        payload_input["reference_audio_urls"] = settings["reference_audio_urls"]
+        payload_input["generate_audio"] = False
 
-    if settings.get("last_frame_url"):
-        input_data["last_frame_url"] = settings["last_frame_url"]
+    # Текст → Видео
+    if mode == "text_to_video":
+        return payload_input
 
-    if settings.get("reference_image_urls"):
-        input_data["reference_image_urls"] = settings["reference_image_urls"]
+    # Картинка → Видео
+    # Важно: здесь используем first_frame_url, а НЕ reference_image_urls.
+    if mode == "image_to_video":
+        if not settings.get("first_frame_url"):
+            raise RuntimeError("Не загружена картинка для режима Картинка → Видео.")
+        payload_input["first_frame_url"] = settings["first_frame_url"]
+        return payload_input
 
-    if settings.get("reference_video_urls"):
-        input_data["reference_video_urls"] = settings["reference_video_urls"]
+    # Картинка + Видео → Видео
+    # Важно: здесь НЕ используем first_frame_url, чтобы не получить ошибку 422.
+    # Используем reference_image_urls + reference_video_urls.
+    if mode == "image_video_to_video":
+        if not settings.get("reference_image_urls"):
+            raise RuntimeError("Не загружена картинка для режима Картинка + Видео → Видео.")
+        if not settings.get("reference_video_urls"):
+            raise RuntimeError("Не загружено исходное видео для режима Картинка + Видео → Видео.")
 
-    if settings.get("reference_audio_urls"):
-        input_data["reference_audio_urls"] = settings["reference_audio_urls"]
+        payload_input["reference_image_urls"] = settings["reference_image_urls"]
+        payload_input["reference_video_urls"] = settings["reference_video_urls"]
+        return payload_input
+
+    raise RuntimeError(f"Неизвестный режим Seedance: {mode}")
+
+
+def create_seedance_video_task(settings: dict) -> str:
+    url = "https://api.kie.ai/api/v1/jobs/createTask"
+
+    headers = {
+        "Authorization": f"Bearer {KIE_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
     payload = {
         "model": "bytedance/seedance-2",
-        "input": input_data
+        "input": build_seedance_input(settings)
     }
 
-    response = requests.post(
-        url,
-        headers=kie_headers(json_content=True),
-        json=payload,
-        timeout=3600
-    )
+    print("SEEDANCE_PAYLOAD:", json.dumps(payload, ensure_ascii=False))
+
+    response = requests.post(url, headers=headers, json=payload, timeout=3600)
     response.raise_for_status()
+
     result = response.json()
+    print("SEEDANCE_CREATE_RESULT:", result)
 
     if result.get("code") != 200:
         raise RuntimeError(f"Ошибка создания задачи Seedance: {result}")
 
-    return result["data"]["taskId"]
+    task_id = (
+        result.get("data", {}).get("taskId")
+        or result.get("data", {}).get("task_id")
+        or result.get("data", {}).get("id")
+    )
+
+    if not task_id:
+        raise RuntimeError(f"Seedance не вернул taskId: {result}")
+
+    return task_id
 
 
 def wait_kie_video_result(task_id: str) -> str:
     url = "https://api.kie.ai/api/v1/jobs/recordInfo"
 
-    for _ in range(360):
-        response = requests.get(
-            url,
-            headers=kie_headers(),
-            params={"taskId": task_id},
-            timeout=60
-        )
-        response.raise_for_status()
-        result = response.json()
+    headers = {
+        "Authorization": f"Bearer {KIE_API_KEY}"
+    }
+
+    for _ in range(3600):
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                params={"taskId": task_id},
+                timeout=3600
+            )
+            response.raise_for_status()
+            result = response.json()
+        except requests.exceptions.Timeout:
+            time.sleep(10)
+            continue
 
         data = result.get("data", {})
         state = data.get("state")
 
         if state == "success":
             result_json_raw = data.get("resultJson")
-            result_json = json.loads(result_json_raw) if isinstance(result_json_raw, str) else (result_json_raw or {})
+
+            if isinstance(result_json_raw, str):
+                result_json = json.loads(result_json_raw)
+            else:
+                result_json = result_json_raw or {}
 
             video_urls = (
                 result_json.get("resultUrls")
@@ -468,17 +649,20 @@ def wait_kie_video_result(task_id: str) -> str:
                 or []
             )
 
+            if isinstance(video_urls, str):
+                video_urls = [video_urls]
+
             if not video_urls:
                 raise RuntimeError(f"Видео готово, но ссылка не найдена: {result_json}")
 
             return video_urls[0]
 
-        if state == "fail":
-            raise RuntimeError(f"Kie не смог сгенерировать видео: {data.get('failMsg')}")
+        if state in ["fail", "failed", "error"]:
+            raise RuntimeError(f"Kie не смог сгенерировать видео: {data.get('failMsg') or data}")
 
         time.sleep(10)
 
-    raise RuntimeError("Видео генерировалось слишком долго. Попробуйте позже.")
+    raise RuntimeError("Видео генерировалось слишком долго. Попробуй позже.")
 
 
 def download_video(video_url: str, user_id: int) -> str:
@@ -519,7 +703,7 @@ def create_yookassa_payment(user_id: int, amount: int):
         "capture": True,
         "confirmation": {
             "type": "redirect",
-            "return_url": BOT_RETURN_URL
+            "return_url": "https://t.me/Xena18Bot"
         },
         "description": f"Пополнение баланса Telegram-бота на {amount} рублей",
         "metadata": {
@@ -558,12 +742,12 @@ def check_yookassa_payment(payment_id: str) -> bool:
 
 
 # =========================
-# ОБЩИЕ СООБЩЕНИЯ
+# FLOW HELPERS
 # =========================
 
 async def send_main_menu(target):
     caption = (
-        f"Наш канал (ГАЛЕРЕЯ + ПРОМПТЫ):\n{MAIN_CHANNEL_URL}\n\n"
+        f"Наш канал (ГАЛЕРЕЯ+ПРОМПТЫ):\n{MAIN_CHANNEL_URL}\n"
         f"Подпишись, чтобы нас не потерять!"
     )
 
@@ -581,140 +765,67 @@ async def send_main_menu(target):
         )
 
 
-async def send_not_ready(chat, title="Этот раздел"):
-    await chat.send_message(
-        f"{title} пока в разработке.\n\n"
-        "Сейчас подключаем Seedance 2.0.",
-        reply_markup=back_to_menu_keyboard(back_callback="create_video")
-    )
-
-
-async def start_seedance_prompt(chat, user_id: int, mode: str):
-    user_states[user_id] = {
-        "model": "seedance_2",
-        "mode": mode,
-        "step": "waiting_prompt",
-    }
-
+async def ask_seedance_prompt(chat, back_callback="model_seedance_2"):
     await chat.send_message(
         "✍️ Добавьте описание видео.\n\n"
         "Напишите, что должно происходить в ролике.",
-        reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+        reply_markup=back_to_menu_keyboard(back_callback=back_callback)
     )
 
 
-async def ask_seedance_image(chat, user_id: int, mode: str):
-    user_states[user_id] = {
-        "model": "seedance_2",
-        "mode": mode,
-        "step": "waiting_image",
-    }
-
-    await chat.send_message(
-        "🖼 Отправьте изображение.\n\n"
-        "Можно отправить JPG, PNG, WEBP или обычное фото из Telegram.",
-        reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
-    )
-
-
-async def ask_seedance_video(chat, user_id: int):
-    user_states[user_id]["step"] = "waiting_video"
-
-    await chat.send_message(
-        "🎬 Отправьте исходное видео.\n\n"
-        "Поддерживаются короткие видео до 15 секунд.",
-        reply_markup=back_to_menu_keyboard(back_callback="seedance_image_video_to_video")
-    )
-
-
-async def ask_seedance_prompt_after_files(chat, user_id: int):
-    user_states[user_id]["step"] = "waiting_prompt"
-
-    await chat.send_message(
-        "✍️ Добавьте описание видео.\n\n"
-        "Напишите, что должно происходить в ролике.",
-        reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
-    )
-
-
-async def ask_seedance_audio(chat, user_id: int):
-    user_states[user_id]["step"] = "choose_audio"
-
-    mode = user_states[user_id].get("mode")
-    if mode == "text_to_video":
-        back_callback = "seedance_text_video"
-    elif mode == "image_to_video":
-        back_callback = "seedance_image_video"
-    else:
-        back_callback = "seedance_image_video_to_video"
-
+async def ask_seedance_audio(chat, back_callback="model_seedance_2"):
     await chat.send_message(
         "🎵 Выберите звук:",
-        reply_markup=audio_menu(back_callback=back_callback)
+        reply_markup=seedance_audio_menu(back_callback=back_callback)
     )
 
 
-async def ask_seedance_custom_audio(chat, user_id: int):
-    user_states[user_id]["step"] = "waiting_audio"
-
-    await chat.send_message(
-        "🎵 Отправьте своё аудио.\n\n"
-        "Можно отправить аудиофайл, голосовое сообщение или видео со звуком.",
-        reply_markup=back_to_menu_keyboard(back_callback="seedance_audio_ai")
-    )
-
-
-async def ask_seedance_resolution(chat, user_id: int):
-    user_states[user_id]["step"] = "choose_resolution"
-
+async def ask_seedance_resolution(chat):
     await chat.send_message(
         "📺 Выберите разрешение:",
-        reply_markup=resolution_menu(back_callback="seedance_audio_ai")
+        reply_markup=seedance_resolution_menu()
     )
 
 
-async def ask_seedance_aspect(chat, user_id: int):
-    user_states[user_id]["step"] = "choose_aspect_ratio"
-
+async def ask_seedance_aspect(chat):
     await chat.send_message(
         "📐 Выберите формат видео:",
-        reply_markup=aspect_ratio_menu(back_callback="seedance_resolution_720p")
+        reply_markup=seedance_aspect_menu()
     )
 
 
-async def ask_seedance_duration(chat, user_id: int):
-    user_states[user_id]["step"] = "choose_duration"
-
+async def ask_seedance_duration(chat):
     await chat.send_message(
         "⏱ Выберите длительность:",
-        reply_markup=duration_menu(back_callback="seedance_aspect_9_16")
+        reply_markup=seedance_duration_menu()
     )
 
 
-async def ask_seedance_generate(chat, user_id: int):
-    user_states[user_id]["step"] = "ready_to_generate"
-    settings = user_states[user_id]
-
-    audio_text = {
-        "ai": "AI-звук",
-        "custom": "своё аудио",
-        "off": "без звука",
-    }.get(settings.get("audio_mode"), "без звука")
+async def ask_seedance_final(chat, user_id: int):
+    settings = user_states.get(user_id, {})
+    mode = settings.get("mode", "")
+    duration = settings.get("duration", "5")
+    cost = get_seedance_price(mode, duration)
 
     await chat.send_message(
         "✅ Всё готово.\n\n"
-        f"Нейросеть: Seedance 2.0\n"
-        f"Звук: {audio_text}\n"
-        f"Разрешение: {settings.get('resolution')}\n"
-        f"Формат: {settings.get('aspect_ratio')}\n"
-        f"Длительность: {settings.get('duration')} сек\n\n"
+        f"Стоимость генерации: {cost} ₽\n\n"
         "Нажмите кнопку ниже, чтобы создать видео.",
-        reply_markup=generate_menu(back_callback="seedance_duration_5")
+        reply_markup=seedance_generate_menu()
     )
 
 
+def get_seedance_price(mode: str, duration: str) -> int:
+    return SEEDANCE_PRICES.get(mode, {}).get(duration, VIDEO_PRICES.get(duration, 0))
+
+
+def make_temp_path(user_id: int, file_unique_id: str, suffix: str) -> Path:
+    safe_suffix = suffix if suffix.startswith(".") else f".{suffix}"
+    return MEDIA_DIR / f"{user_id}_{file_unique_id}{safe_suffix}"
+
+
 # =========================
-# КОМАНДЫ
+# COMMAND HANDLERS
 # =========================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -724,6 +835,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if context.args:
         ref_code = context.args[0]
+
         if ref_code.startswith("partner_"):
             referrer_id = int(ref_code.replace("partner_", ""))
             set_referrer(user_id, referrer_id, "bonus")
@@ -739,7 +851,9 @@ async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     save_username(user_id, update.message.from_user.username)
 
-    await update.message.reply_text(f"Твой Telegram ID:\n{user_id}")
+    await update.message.reply_text(
+        f"Твой Telegram ID:\n{user_id}"
+    )
 
 
 async def give(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -751,19 +865,25 @@ async def give(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(context.args) != 2:
         await update.message.reply_text(
-            "Используй:\n/give USER_ID СУММА\n\nПример:\n/give 123456789 98"
+            "Используй:\n"
+            "/give USER_ID СУММА\n\n"
+            "Пример:\n"
+            "/give 123456789 98"
         )
         return
 
     try:
         target_id = int(context.args[0])
         amount = int(context.args[1])
-    except ValueError:
+    except Exception:
         await update.message.reply_text("❌ Ошибка формата.")
         return
 
     give_balance(target_id, amount)
-    await update.message.reply_text(f"✅ Пользователю {target_id} выдано {amount} ₽")
+
+    await update.message.reply_text(
+        f"✅ Пользователю {target_id} выдано {amount} ₽"
+    )
 
 
 async def giveuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -775,7 +895,10 @@ async def giveuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(context.args) != 2:
         await update.message.reply_text(
-            "Используй:\n/giveuser @username СУММА\n\nПример:\n/giveuser @username 98"
+            "Используй:\n"
+            "/giveuser @username СУММА\n\n"
+            "Пример:\n"
+            "/giveuser @username 98"
         )
         return
 
@@ -783,7 +906,7 @@ async def giveuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         amount = int(context.args[1])
-    except ValueError:
+    except Exception:
         await update.message.reply_text("❌ Ошибка суммы.")
         return
 
@@ -797,7 +920,10 @@ async def giveuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     give_balance(target_id, amount)
-    await update.message.reply_text(f"✅ @{username.replace('@', '')} выдано {amount} ₽")
+
+    await update.message.reply_text(
+        f"✅ @{username.replace('@', '')} выдано {amount} ₽"
+    )
 
 
 async def partners(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -817,7 +943,11 @@ async def partners(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for user_id, username, balance in rows:
         name = username or "без username"
-        text += f"ID: {user_id}\n@{name}\nК выплате: {balance} ₽\n\n"
+        text += (
+            f"ID: {user_id}\n"
+            f"@{name}\n"
+            f"К выплате: {balance} ₽\n\n"
+        )
 
     await update.message.reply_text(text)
 
@@ -830,28 +960,35 @@ async def paypartner(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if len(context.args) != 1:
-        await update.message.reply_text("Используй:\n/paypartner USER_ID")
+        await update.message.reply_text(
+            "Используй:\n"
+            "/paypartner USER_ID"
+        )
         return
 
     try:
         target_id = int(context.args[0])
-    except ValueError:
+    except Exception:
         await update.message.reply_text("Ошибка ID.")
         return
 
     reset_partner_balance(target_id)
-    await update.message.reply_text(f"✅ Партнёрский баланс {target_id} обнулён.")
+
+    await update.message.reply_text(
+        f"✅ Партнёрский баланс {target_id} обнулён."
+    )
 
 
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "💳 Выберите сумму пополнения:",
+        "💳 Пополнение баланса:\n\n"
+        "Выберите сумму пополнения:",
         reply_markup=topup_inline_menu()
     )
 
 
 # =========================
-# INLINE-КНОПКИ
+# CALLBACK HANDLER
 # =========================
 
 async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -872,111 +1009,7 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_main_menu(chat)
         return
 
-    if action == "create_video":
-        await chat.send_message(
-            "Выберите нейросеть для генерации видео:",
-            reply_markup=video_models_menu()
-        )
-        return
-
-    if action == "model_seedance_2":
-        await chat.send_message(
-            "🎬 Seedance 2.0\n\nВыберите режим генерации:",
-            reply_markup=seedance_modes_menu()
-        )
-        return
-
-    if action in [
-        "model_grok_imagine_15",
-        "model_kling_30_turbo",
-        "model_happyhorse_11",
-        "model_wan_27_video",
-        "model_gemini_omni",
-        "model_hailuo_23",
-        "model_veo_31",
-    ]:
-        await send_not_ready(chat)
-        return
-
-    if action == "seedance_text_video":
-        await start_seedance_prompt(chat, user_id, mode="text_to_video")
-        return
-
-    if action == "seedance_image_video":
-        await ask_seedance_image(chat, user_id, mode="image_to_video")
-        return
-
-    if action == "seedance_image_video_to_video":
-        await ask_seedance_image(chat, user_id, mode="image_video_to_video")
-        return
-
-    if action in ["seedance_audio_ai", "seedance_audio_custom", "seedance_audio_off"]:
-        if user_id not in user_states:
-            await chat.send_message(
-                "Сначала выберите режим генерации.",
-                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
-            )
-            return
-
-        if action == "seedance_audio_ai":
-            user_states[user_id]["audio_mode"] = "ai"
-            user_states[user_id]["generate_audio"] = True
-            await ask_seedance_resolution(chat, user_id)
-            return
-
-        if action == "seedance_audio_custom":
-            user_states[user_id]["audio_mode"] = "custom"
-            user_states[user_id]["generate_audio"] = False
-            await ask_seedance_custom_audio(chat, user_id)
-            return
-
-        user_states[user_id]["audio_mode"] = "off"
-        user_states[user_id]["generate_audio"] = False
-        await ask_seedance_resolution(chat, user_id)
-        return
-
-    if action.startswith("seedance_resolution_"):
-        if user_id not in user_states:
-            await chat.send_message(
-                "Сначала выберите режим генерации.",
-                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
-            )
-            return
-
-        resolution = action.replace("seedance_resolution_", "")
-        user_states[user_id]["resolution"] = resolution
-        await ask_seedance_aspect(chat, user_id)
-        return
-
-    if action.startswith("seedance_aspect_"):
-        if user_id not in user_states:
-            await chat.send_message(
-                "Сначала выберите режим генерации.",
-                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
-            )
-            return
-
-        aspect = action.replace("seedance_aspect_", "").replace("_", ":")
-        user_states[user_id]["aspect_ratio"] = aspect
-        await ask_seedance_duration(chat, user_id)
-        return
-
-    if action.startswith("seedance_duration_"):
-        if user_id not in user_states:
-            await chat.send_message(
-                "Сначала выберите режим генерации.",
-                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
-            )
-            return
-
-        duration = action.replace("seedance_duration_", "")
-        user_states[user_id]["duration"] = duration
-        await ask_seedance_generate(chat, user_id)
-        return
-
-    if action == "seedance_generate":
-        await handle_seedance_generate(chat, user_id)
-        return
+    # ---- Payments ----
 
     if action.startswith("checkpay_"):
         parts = action.split("_")
@@ -995,14 +1028,14 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not paid:
             await chat.send_message(
                 "⏳ Оплата пока не найдена.\n\n"
-                "Если ты уже оплатил — подожди 10–20 секунд и нажми кнопку ещё раз.",
+                "Если вы уже оплатили — подождите 10–20 секунд и нажмите кнопку ещё раз.",
                 reply_markup=navigation_keyboard([
                     [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")]
                 ], back_callback="buy")
             )
             return
 
-        give_balance(user_id, amount)
+        add_paid_credit(user_id, amount)
         apply_deposit_bonus(user_id, amount)
         _, paid_credits = get_user(user_id)
 
@@ -1010,25 +1043,30 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ Оплата получена!\n\n"
             f"Баланс пополнен на {amount} ₽.\n"
             f"Текущий баланс: {paid_credits} ₽.",
-            reply_markup=back_to_menu_keyboard(back_callback="main_menu")
+            reply_markup=back_to_menu_keyboard()
         )
         return
 
     if action.startswith("topup_"):
         amount = int(action.replace("topup_", ""))
+
         payment_url, payment_id = create_yookassa_payment(user_id, amount)
+
+        keyboard = navigation_keyboard([
+            [InlineKeyboardButton("💳 Оплатить", url=payment_url)],
+            [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")]
+        ], back_callback="buy")
 
         await chat.send_message(
             f"💳 Пополнение баланса на {amount} ₽\n\n"
             f"1. Нажмите «Оплатить»\n"
             f"2. После оплаты вернитесь сюда\n"
             f"3. Нажмите «✅ Проверить оплату»",
-            reply_markup=navigation_keyboard([
-                [InlineKeyboardButton("💳 Оплатить", url=payment_url)],
-                [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")]
-            ], back_callback="buy")
+            reply_markup=keyboard
         )
         return
+
+    # ---- Main sections ----
 
     if action == "buy":
         await chat.send_message(
@@ -1038,16 +1076,16 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "profile":
-        _, paid_credits = get_user(user_id)
+        free_used, paid_credits = get_user(user_id)
 
         await chat.send_message(
-            f"👤 Твой баланс:\n\n"
+            f"👤 Ваш баланс:\n\n"
             f"Баланс: {paid_credits} ₽\n\n"
-            f"Стоимость видео:\n"
-            f"5 секунд — {VIDEO_PRICES['5']} ₽\n"
-            f"10 секунд — {VIDEO_PRICES['10']} ₽\n"
-            f"15 секунд — {VIDEO_PRICES['15']} ₽",
-            reply_markup=back_to_menu_keyboard(back_callback="main_menu")
+            f"Текущая стоимость Seedance:\n"
+            f"5 секунд — от {VIDEO_PRICES['5']} ₽\n"
+            f"10 секунд — от {VIDEO_PRICES['10']} ₽\n"
+            f"15 секунд — от {VIDEO_PRICES['15']} ₽",
+            reply_markup=back_to_menu_keyboard()
         )
         return
 
@@ -1057,11 +1095,12 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await chat.send_message(
             "🤝 Партнерка\n\n"
-            "За каждого приведенного активного пользователя вы получаете 70% от каждого его депозита "
-            "на свой бонусный счёт.\n\n"
-            "Ваша реферальная ссылка:\n"
+            "За каждого приведенного активного пользователя вы будете получать бонусы "
+            "на свой бонусный счет.\n\n"
+            "Информация о бонусах отображается в разделе «Кабинет партнера».\n\n"
+            f"Ваша реферальная ссылка:\n"
             f"https://t.me/{bot_username}?start=partner_{user_id}",
-            reply_markup=back_to_menu_keyboard(back_callback="main_menu")
+            reply_markup=back_to_menu_keyboard()
         )
         return
 
@@ -1072,7 +1111,7 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💼 Кабинет партнера\n\n"
             f"Бонусный счет: {partner_balance} бонусов\n\n"
             f"1 бонус = 1 ₽.",
-            reply_markup=back_to_menu_keyboard(back_callback="main_menu")
+            reply_markup=back_to_menu_keyboard()
         )
         return
 
@@ -1080,272 +1119,547 @@ async def menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await chat.send_message(
             "📘 Инструкция\n\n"
             "1. Выберите, что хотите создать.\n"
-            "2. Выберите нейросеть.\n"
-            "3. Следуйте шагам бота: загрузите файлы, добавьте описание и выберите настройки.\n"
-            "4. Нажмите «Создать видео» и дождитесь результата.",
-            reply_markup=back_to_menu_keyboard(back_callback="main_menu")
+            "2. Выберите нейросеть и режим генерации.\n"
+            "3. Отправьте нужные файлы и описание.\n"
+            "4. Выберите звук, разрешение, формат и длительность.\n"
+            "5. Нажмите «Создать видео» и дождитесь результата.\n\n"
+            "Бот проведёт вас по шагам.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    if action == "create_video":
+        await chat.send_message(
+            "Выберите нейросеть для генерации видео:",
+            reply_markup=video_models_menu()
         )
         return
 
     if action == "create_image":
         await chat.send_message(
-            "🖼 Создание изображений пока в разработке.",
-            reply_markup=back_to_menu_keyboard(back_callback="main_menu")
+            "🖼 Создание изображений\n\n"
+            "Этот раздел подключим следующим этапом.",
+            reply_markup=back_to_menu_keyboard()
         )
         return
 
     if action == "create_audio":
         await chat.send_message(
-            "🎵 Создание аудио пока в разработке.",
-            reply_markup=back_to_menu_keyboard(back_callback="main_menu")
+            "🎵 Создание аудио\n\n"
+            "Этот раздел подключим следующим этапом.",
+            reply_markup=back_to_menu_keyboard()
         )
         return
 
+    # ---- Not connected video models yet ----
 
-async def handle_seedance_generate(chat, user_id: int):
-    if user_id not in user_states:
+    if action in [
+        "model_grok_imagine_15",
+        "model_kling_30_turbo",
+        "model_happyhorse_11",
+        "model_wan_27_video",
+        "model_gemini_omni",
+        "model_hailuo_23",
+        "model_veo_31",
+    ]:
         await chat.send_message(
-            "Сначала настройте генерацию.",
+            "Эту нейросеть подключим следующим этапом.\n\n"
+            "Сейчас работаем с Seedance 2.0.",
+            reply_markup=back_to_menu_keyboard(back_callback="create_video")
+        )
+        return
+
+    # ---- Seedance ----
+
+    if action == "model_seedance_2":
+        user_states.pop(user_id, None)
+        await chat.send_message(
+            "🎬 Seedance 2.0\n\n"
+            "Выберите режим генерации:",
+            reply_markup=seedance_modes_menu()
+        )
+        return
+
+    if action == "seedance_text_video":
+        user_states[user_id] = {
+            "model": "seedance_2",
+            "mode": "text_to_video",
+            "step": "waiting_prompt"
+        }
+
+        await ask_seedance_prompt(chat, back_callback="model_seedance_2")
+        return
+
+    if action == "seedance_image_video":
+        user_states[user_id] = {
+            "model": "seedance_2",
+            "mode": "image_to_video",
+            "step": "waiting_image"
+        }
+
+        await chat.send_message(
+            "🖼 Отправьте картинку.\n\n"
+            "Она станет первым кадром будущего видео.",
             reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
         )
         return
 
-    settings = user_states[user_id]
-    duration = settings.get("duration", "5")
+    if action == "seedance_image_video_to_video":
+        user_states[user_id] = {
+            "model": "seedance_2",
+            "mode": "image_video_to_video",
+            "step": "waiting_image"
+        }
 
-    if duration not in VIDEO_PRICES:
         await chat.send_message(
-            "⏱ Для выбранной длительности цена пока не настроена.",
+            "🖼 Отправьте картинку.\n\n"
+            "Она будет использоваться как исходное изображение для генерации.",
             reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
         )
         return
 
-    video_cost = VIDEO_PRICES[duration]
-    _, paid_credits = get_user(user_id)
+    if action == "seedance_audio_ai":
+        if user_id not in user_states:
+            await chat.send_message(
+                "Сначала выберите режим генерации.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
 
-    if paid_credits < video_cost:
+        user_states[user_id]["audio_mode"] = "ai"
+        user_states[user_id]["generate_audio"] = True
+        user_states[user_id]["step"] = "choose_resolution"
+
+        await ask_seedance_resolution(chat)
+        return
+
+    if action == "seedance_audio_off":
+        if user_id not in user_states:
+            await chat.send_message(
+                "Сначала выберите режим генерации.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
+
+        user_states[user_id]["audio_mode"] = "off"
+        user_states[user_id]["generate_audio"] = False
+        user_states[user_id]["step"] = "choose_resolution"
+
+        await ask_seedance_resolution(chat)
+        return
+
+    if action == "seedance_audio_custom":
+        if user_id not in user_states:
+            await chat.send_message(
+                "Сначала выберите режим генерации.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
+
+        user_states[user_id]["audio_mode"] = "custom"
+        user_states[user_id]["generate_audio"] = False
+        user_states[user_id]["step"] = "waiting_audio"
+
         await chat.send_message(
-            f"💳 Недостаточно средств.\n\n"
-            f"Стоимость: {video_cost} ₽\n"
-            f"Ваш баланс: {paid_credits} ₽",
-            reply_markup=navigation_keyboard([
-                [InlineKeyboardButton("💳 ПОПОЛНИТЬ БАЛАНС", callback_data="buy")]
-            ], back_callback="model_seedance_2")
+            "🎵 Отправьте своё аудио.\n\n"
+            "Поддерживаются обычные аудиофайлы и голосовые сообщения.",
+            reply_markup=back_to_menu_keyboard(back_callback="seedance_back_audio")
         )
+        return
+
+    if action == "seedance_back_audio":
+        if user_id not in user_states:
+            await chat.send_message(
+                "Сначала выберите режим генерации.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
+
+        await ask_seedance_audio(chat, back_callback="model_seedance_2")
+        return
+
+    if action.startswith("seedance_resolution_"):
+        if user_id not in user_states:
+            await chat.send_message(
+                "Сначала выберите режим генерации.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
+
+        resolution = action.replace("seedance_resolution_", "")
+        user_states[user_id]["resolution"] = resolution
+        user_states[user_id]["step"] = "choose_aspect_ratio"
+
+        await ask_seedance_aspect(chat)
+        return
+
+    if action == "seedance_back_resolution":
+        await ask_seedance_resolution(chat)
+        return
+
+    if action.startswith("seedance_aspect_"):
+        if user_id not in user_states:
+            await chat.send_message(
+                "Сначала выберите режим генерации.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
+
+        aspect = action.replace("seedance_aspect_", "").replace("_", ":")
+        user_states[user_id]["aspect_ratio"] = aspect
+        user_states[user_id]["step"] = "choose_duration"
+
+        await ask_seedance_duration(chat)
+        return
+
+    if action == "seedance_back_aspect":
+        await ask_seedance_aspect(chat)
+        return
+
+    if action.startswith("seedance_duration_"):
+        if user_id not in user_states:
+            await chat.send_message(
+                "Сначала выберите режим генерации.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
+
+        duration = action.replace("seedance_duration_", "")
+        user_states[user_id]["duration"] = duration
+        user_states[user_id]["step"] = "ready_to_generate"
+
+        await ask_seedance_final(chat, user_id)
+        return
+
+    if action == "seedance_back_duration":
+        await ask_seedance_duration(chat)
+        return
+
+    if action == "seedance_generate":
+        if user_id not in user_states:
+            await chat.send_message(
+                "Сначала настройте генерацию.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
+
+        settings = user_states[user_id]
+        mode = settings.get("mode", "")
+        duration = settings.get("duration", "5")
+        video_cost = get_seedance_price(mode, duration)
+
+        if video_cost <= 0:
+            await chat.send_message(
+                "Для выбранного режима цена пока не настроена.",
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+            return
+
+        free_used, paid_credits = get_user(user_id)
+
+        if paid_credits < video_cost:
+            await chat.send_message(
+                f"💳 Недостаточно средств.\n\n"
+                f"Стоимость: {video_cost} ₽\n"
+                f"Ваш баланс: {paid_credits} ₽",
+                reply_markup=navigation_keyboard([
+                    [InlineKeyboardButton("💳 ПОПОЛНИТЬ БАЛАНС", callback_data="buy")]
+                ], back_callback="model_seedance_2")
+            )
+            return
+
+        await chat.send_message(
+            "🎬 Запускаю Seedance 2.0.\n\n"
+            "Генерация может занять несколько минут."
+        )
+
+        try:
+            video_path = generate_seedance_video(settings, user_id)
+
+            decrement_paid_credit(user_id, video_cost)
+            apply_referral_bonus(user_id, duration)
+
+            try:
+                with open(video_path, "rb") as video_file:
+                    await chat.send_video(
+                        video=video_file,
+                        caption="✅ Готово! Вот твоё видео.",
+                        read_timeout=3600,
+                        write_timeout=3600,
+                        connect_timeout=60,
+                        pool_timeout=3600
+                    )
+            except Exception:
+                await chat.send_message(
+                    "⚠️ Видео было сгенерировано, но Telegram не смог его отправить.\n\n"
+                    f"Напишите в поддержку:\n{SUPPORT_URL}",
+                    disable_web_page_preview=True
+                )
+
+            _, paid_credits_after = get_user(user_id)
+
+            await chat.send_message(
+                f"Баланс: {paid_credits_after} ₽",
+                reply_markup=back_to_menu_keyboard(back_callback="main_menu")
+            )
+
+        except Exception as e:
+            import traceback
+            print("SEEDANCE_GENERATION_ERROR:", repr(e))
+            traceback.print_exc()
+
+            await chat.send_message(
+                "❌ Ошибка генерации Seedance 2.0.\n\n"
+                f"Если ошибка повторяется — напишите в поддержку:\n{SUPPORT_URL}",
+                disable_web_page_preview=True,
+                reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            )
+
+        user_states.pop(user_id, None)
         return
 
     await chat.send_message(
-        "🎬 Запускаю Seedance 2.0.\n\n"
-        "Генерация может занять несколько минут."
+        "Этот раздел пока не подключен.",
+        reply_markup=back_to_menu_keyboard()
     )
-
-    try:
-        video_path = generate_seedance_video(settings, user_id)
-        decrement_paid_credit(user_id, video_cost)
-
-        with open(video_path, "rb") as video_file:
-            await chat.send_video(
-                video=video_file,
-                caption="✅ Готово! Вот твоё видео.",
-                read_timeout=3600,
-                write_timeout=3600,
-                connect_timeout=60,
-                pool_timeout=3600
-            )
-
-        _, paid_credits_after = get_user(user_id)
-
-        await chat.send_message(
-            f"Баланс: {paid_credits_after} ₽",
-            reply_markup=back_to_menu_keyboard(back_callback="main_menu")
-        )
-
-    except Exception as e:
-        import traceback
-        print("SEEDANCE_GENERATION_ERROR:", repr(e))
-        traceback.print_exc()
-
-        await chat.send_message(
-            "❌ Ошибка генерации Seedance 2.0.\n\n"
-            "Если ошибка повторяется — напишите в поддержку:\n"
-            f"{SUPPORT_URL}",
-            disable_web_page_preview=True,
-            reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
-        )
-
-    user_states.pop(user_id, None)
 
 
 # =========================
-# ВХОДЯЩИЕ ФАЙЛЫ И ТЕКСТ
+# MESSAGE HANDLERS
 # =========================
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
+    state = user_states.get(user_id)
 
-    if user_id not in user_states:
+    if not state or state.get("model") != "seedance_2":
         await update.message.reply_text(
-            "Сначала выберите режим генерации.",
-            reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+            "Сначала выберите режим генерации в меню.",
+            reply_markup=back_to_menu_keyboard()
         )
         return
 
-    state = user_states[user_id]
-    step = state.get("step")
-
-    if step != "waiting_image":
-        await update.message.reply_text("Сейчас бот не ждёт изображение.")
+    if state.get("step") != "waiting_image":
+        await update.message.reply_text(
+            "Сейчас бот не ожидает картинку.\n\n"
+            "Следуйте шагам на экране.",
+            reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+        )
         return
 
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
 
-    image_path = MEDIA_DIR / f"{user_id}_{photo.file_unique_id}.jpg"
+    image_path = make_temp_path(user_id, photo.file_unique_id, ".jpg")
     await file.download_to_drive(str(image_path))
 
-    image_url = upload_file_to_kie(str(image_path), upload_path="xena-bot/images")
+    await update.message.reply_text("🖼 Картинка получена. Загружаю её в Kie...")
 
-    state["first_frame_url"] = image_url
-    state.setdefault("reference_image_urls", []).append(image_url)
-
-    if state.get("mode") == "image_video_to_video":
-        await ask_seedance_video(update.message.chat, user_id)
-    else:
-        await ask_seedance_prompt_after_files(update.message.chat, user_id)
-
-
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-
-    if user_id not in user_states:
+    try:
+        image_url = upload_file_to_kie(str(image_path), upload_folder="xena-seedance/images")
+    except Exception as e:
         await update.message.reply_text(
-            "Сначала выберите режим генерации.",
+            f"❌ Не удалось загрузить картинку:\n\n{e}",
             reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
         )
         return
 
-    state = user_states[user_id]
-    step = state.get("step")
-    document = update.message.document
+    mode = state.get("mode")
 
-    file = await context.bot.get_file(document.file_id)
-    safe_name = document.file_name or f"{user_id}_file"
-    file_path = MEDIA_DIR / f"{user_id}_{int(time.time())}_{safe_name}"
-    await file.download_to_drive(str(file_path))
+    if mode == "image_to_video":
+        state["first_frame_url"] = image_url
+        state["step"] = "waiting_prompt"
 
-    url = upload_file_to_kie(str(file_path), upload_path="xena-bot/files")
-    mime = document.mime_type or mimetypes.guess_type(safe_name)[0] or ""
-
-    if step == "waiting_image" and mime.startswith("image/"):
-        state["first_frame_url"] = url
-        state.setdefault("reference_image_urls", []).append(url)
-
-        if state.get("mode") == "image_video_to_video":
-            await ask_seedance_video(update.message.chat, user_id)
-        else:
-            await ask_seedance_prompt_after_files(update.message.chat, user_id)
+        await ask_seedance_prompt(update.message, back_callback="seedance_image_video")
         return
 
-    if step == "waiting_video" and (mime.startswith("video/") or "quicktime" in mime or "matroska" in mime):
-        state["reference_video_urls"] = [url]
-        await ask_seedance_prompt_after_files(update.message.chat, user_id)
-        return
+    if mode == "image_video_to_video":
+        state["reference_image_urls"] = [image_url]
+        state["step"] = "waiting_video"
 
-    if step == "waiting_audio" and (mime.startswith("audio/") or mime.startswith("video/")):
-        state["reference_audio_urls"] = [url]
-        await ask_seedance_resolution(update.message.chat, user_id)
+        await update.message.reply_text(
+            "🎬 Теперь отправьте исходное видео.\n\n"
+            "Оно будет использоваться как видео-референс для генерации.",
+            reply_markup=back_to_menu_keyboard(back_callback="seedance_image_video_to_video")
+        )
         return
 
     await update.message.reply_text(
-        "Файл получен, но сейчас бот ждёт другой тип файла.",
+        "Неизвестный режим генерации.",
         reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
     )
 
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
+    state = user_states.get(user_id)
 
-    if user_id not in user_states:
+    if not state or state.get("model") != "seedance_2":
         await update.message.reply_text(
-            "Сначала выберите режим генерации.",
+            "Сначала выберите режим генерации в меню.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    if state.get("step") != "waiting_video":
+        await update.message.reply_text(
+            "Сейчас бот не ожидает видео.\n\n"
+            "Следуйте шагам на экране.",
             reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
         )
         return
 
-    state = user_states[user_id]
-    step = state.get("step")
-    video = update.message.video
+    video = update.message.video or update.message.document
+
+    if not video:
+        await update.message.reply_text(
+            "Не удалось получить видео. Попробуйте отправить MP4-файл.",
+            reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+        )
+        return
 
     file = await context.bot.get_file(video.file_id)
-    video_path = MEDIA_DIR / f"{user_id}_{video.file_unique_id}.mp4"
+
+    suffix = Path(getattr(video, "file_name", "") or "video.mp4").suffix or ".mp4"
+    video_path = make_temp_path(user_id, video.file_unique_id, suffix)
     await file.download_to_drive(str(video_path))
 
-    video_url = upload_file_to_kie(str(video_path), upload_path="xena-bot/videos")
+    await update.message.reply_text("🎬 Видео получено. Загружаю его в Kie...")
 
-    if step == "waiting_video":
-        state["reference_video_urls"] = [video_url]
-        await ask_seedance_prompt_after_files(update.message.chat, user_id)
+    try:
+        video_url = upload_file_to_kie(str(video_path), upload_folder="xena-seedance/videos")
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Не удалось загрузить видео:\n\n{e}",
+            reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
+        )
         return
 
-    if step == "waiting_audio":
-        state["reference_audio_urls"] = [video_url]
-        await ask_seedance_resolution(update.message.chat, user_id)
-        return
+    state["reference_video_urls"] = [video_url]
+    state["step"] = "waiting_prompt"
 
-    await update.message.reply_text("Сейчас бот не ждёт видео.")
+    await ask_seedance_prompt(update.message, back_callback="seedance_image_video_to_video")
 
 
 async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
+    state = user_states.get(user_id)
 
-    if user_id not in user_states:
+    if not state or state.get("model") != "seedance_2":
         await update.message.reply_text(
-            "Сначала выберите режим генерации.",
+            "Сначала выберите режим генерации в меню.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    if state.get("step") != "waiting_audio":
+        await update.message.reply_text(
+            "Сейчас бот не ожидает аудио.\n\n"
+            "Следуйте шагам на экране.",
             reply_markup=back_to_menu_keyboard(back_callback="model_seedance_2")
         )
         return
 
-    state = user_states[user_id]
-    step = state.get("step")
+    audio_obj = update.message.audio or update.message.voice or update.message.document
 
-    if step != "waiting_audio":
-        await update.message.reply_text("Сейчас бот не ждёт аудио.")
+    if not audio_obj:
+        await update.message.reply_text(
+            "Не удалось получить аудио. Попробуйте отправить аудиофайл.",
+            reply_markup=back_to_menu_keyboard(back_callback="seedance_back_audio")
+        )
         return
 
-    audio = update.message.audio or update.message.voice
-    file = await context.bot.get_file(audio.file_id)
+    file = await context.bot.get_file(audio_obj.file_id)
 
-    ext = "ogg" if update.message.voice else "mp3"
-    audio_path = MEDIA_DIR / f"{user_id}_{audio.file_unique_id}.{ext}"
+    file_name = getattr(audio_obj, "file_name", "") or "audio.ogg"
+    suffix = Path(file_name).suffix or ".ogg"
+    audio_path = make_temp_path(user_id, audio_obj.file_unique_id, suffix)
     await file.download_to_drive(str(audio_path))
 
-    audio_url = upload_file_to_kie(str(audio_path), upload_path="xena-bot/audio")
-    state["reference_audio_urls"] = [audio_url]
+    await update.message.reply_text("🎵 Аудио получено. Загружаю его в Kie...")
 
-    await ask_seedance_resolution(update.message.chat, user_id)
+    try:
+        audio_url = upload_file_to_kie(str(audio_path), upload_folder="xena-seedance/audio")
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Не удалось загрузить аудио:\n\n{e}",
+            reply_markup=back_to_menu_keyboard(back_callback="seedance_back_audio")
+        )
+        return
+
+    state["reference_audio_urls"] = [audio_url]
+    state["step"] = "choose_resolution"
+
+    await ask_seedance_resolution(update.message)
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     text = update.message.text
 
+    # Reply-keyboard compatibility
     if text == "🚀 Запустить бота":
         await send_main_menu(update.message)
         return
 
-    if user_id in user_states and user_states[user_id].get("step") == "waiting_prompt":
-        user_states[user_id]["prompt"] = text
-        await ask_seedance_audio(update.message.chat, user_id)
+    if text == "📘 Инструкция: /help":
+        await update.message.reply_text(
+            "📘 Инструкция доступна в главном меню.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    if text == "👤 Мой баланс: /profile":
+        free_used, paid_credits = get_user(user_id)
+        await update.message.reply_text(f"Баланс: {paid_credits} ₽")
+        return
+
+    if text == "🆘 Связаться с поддержкой":
+        await update.message.reply_text(
+            f"🆘 Написать в поддержку: {SUPPORT_URL}",
+            disable_web_page_preview=True
+        )
+        return
+
+    state = user_states.get(user_id)
+
+    if state and state.get("model") == "seedance_2" and state.get("step") == "waiting_prompt":
+        state["prompt"] = text
+        state["step"] = "choose_audio"
+
+        await ask_seedance_audio(update.message, back_callback="model_seedance_2")
         return
 
     await update.message.reply_text(
-        "Выберите действие в меню.",
-        reply_markup=back_to_menu_keyboard(back_callback="main_menu")
+        "Выберите действие в главном меню.",
+        reply_markup=back_to_menu_keyboard()
     )
 
 
+async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.pre_checkout_query
+    await query.answer(ok=True)
+
+
+async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    payload = update.message.successful_payment.invoice_payload
+
+    if payload.startswith("topup_"):
+        amount = int(payload.replace("topup_", ""))
+        add_paid_credit(user_id, amount)
+        apply_deposit_bonus(user_id, amount)
+
+        _, paid_credits = get_user(user_id)
+
+        await update.message.reply_text(
+            f"✅ Баланс пополнен на {amount} ₽.\n\n"
+            f"Текущий баланс: {paid_credits} ₽."
+        )
+
+
 # =========================
-# ЗАПУСК
+# APP
 # =========================
 
 def main():
@@ -1371,11 +1685,12 @@ def main():
     app.add_handler(CommandHandler("paypartner", paypartner))
 
     app.add_handler(CallbackQueryHandler(menu_button))
+    app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
 
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.VIDEO, handle_video))
-    app.add_handler(MessageHandler(filters.AUDIO | filters.VOICE, handle_audio))
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video))
+    app.add_handler(MessageHandler(filters.AUDIO | filters.VOICE | filters.Document.AUDIO, handle_audio))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     print("Бот запущен...")
