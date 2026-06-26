@@ -114,16 +114,16 @@ def video_models_menu():
 def seedance_modes_menu():
     return navigation_keyboard([
         [InlineKeyboardButton("🎥 Текст → Видео", callback_data="seedance_mode_text")],
-        [InlineKeyboardButton("🖼 Изображение → Видео", callback_data="seedance_mode_image")],
-        [InlineKeyboardButton("🖼🎬 Изображение + Видео → Видео", callback_data="seedance_mode_image_video")]
+        [InlineKeyboardButton("📷 Изображение → Видео", callback_data="seedance_mode_image")],
+        [InlineKeyboardButton("🎬 Изображение + Видео → Видео", callback_data="seedance_mode_image_video")]
     ], back_callback="create_video")
 
 
 def seedance_image_type_menu(back_callback):
     return navigation_keyboard([
-        [InlineKeyboardButton("1 изображение", callback_data="seedance_image_first")],
-        [InlineKeyboardButton("Первый и последний кадр", callback_data="seedance_image_first_last")],
-        [InlineKeyboardButton("Несколько изображений", callback_data="seedance_image_reference_pack")]
+        [InlineKeyboardButton("1️⃣ 1 изображение", callback_data="seedance_image_first")],
+        [InlineKeyboardButton("2️⃣ Первый и последний кадр", callback_data="seedance_image_first_last")],
+        [InlineKeyboardButton("3️⃣ Несколько изображений", callback_data="seedance_image_reference_pack")]
     ], back_callback=back_callback)
 
 
@@ -474,7 +474,7 @@ async def send_kie_error(chat, back_callback="model_seedance_2"):
 
 
 async def ask_seedance_image_type(chat, back_callback="model_seedance_2"):
-    await chat.send_message("Выберите 1 вариант загрузки изображений:", reply_markup=seedance_image_type_menu(back_callback))
+    await chat.send_message("Выберите вариант загрузки изображений:", reply_markup=seedance_image_type_menu(back_callback))
 
 
 async def ask_seedance_prompt(target, back_callback="model_seedance_2"):
@@ -494,18 +494,18 @@ async def ask_next_image_upload(chat, user_id: int):
     image_type = state.get("image_type")
     if image_type == "first":
         state["step"] = "waiting_first_frame"
-        await chat.send_message("🖼 Загрузите изображение.", reply_markup=back_to_menu_keyboard(back_callback="seedance_back_to_image_type"))
+        await chat.send_message("Загрузите изображение.", reply_markup=back_to_menu_keyboard(back_callback="seedance_back_to_image_type"))
     elif image_type == "first_last":
         state["step"] = "waiting_first_frame"
         await chat.send_message(
-            "🖼 Загрузите изображения.\n\nСначала отправьте первый кадр.",
+            "Загрузите изображения.\n\nСначала отправьте первый кадр.",
             reply_markup=back_to_menu_keyboard(back_callback="seedance_back_to_image_type")
         )
     else:
         state["step"] = "waiting_reference_images"
         state["reference_image_urls"] = []
         await chat.send_message(
-            "🖼 Загрузите изображения.\n\nОтправьте от 1 до 9 изображений. Когда закончите — нажмите «Продолжить».",
+            "Загрузите изображения.\n\nОтправьте от 1 до 9 изображений. Когда закончите — нажмите «Продолжить».",
             reply_markup=navigation_keyboard([[InlineKeyboardButton("✅ Продолжить", callback_data="seedance_images_done")]], back_callback="seedance_back_to_image_type")
         )
 
