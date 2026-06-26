@@ -93,13 +93,13 @@ def main_inline_menu():
     ])
 
 
-def topup_inline_menu():
+def topup_inline_menu(back_callback="main_menu"):
     return navigation_keyboard([
         [InlineKeyboardButton("250 ₽", callback_data="topup_250")],
         [InlineKeyboardButton("500 ₽", callback_data="topup_500")],
         [InlineKeyboardButton("1000 ₽", callback_data="topup_1000")],
         [InlineKeyboardButton("5000 ₽", callback_data="topup_5000")]
-    ], back_callback="main_menu")
+    ], back_callback=back_callback)
 
 
 def video_models_menu():
@@ -117,10 +117,32 @@ def video_models_menu():
 
 def seedance_modes_menu():
     return navigation_keyboard([
+        [InlineKeyboardButton("💰 Прайс Seedance 2.0", callback_data="seedance_price_list")],
         [InlineKeyboardButton("🎥 Текст → Видео", callback_data="seedance_mode_text")],
         [InlineKeyboardButton("📷 Изображение → Видео", callback_data="seedance_mode_image")],
         [InlineKeyboardButton("🎬 Изображение + Видео → Видео", callback_data="seedance_mode_image_video")]
     ], back_callback="create_video")
+
+
+def seedance_price_list_text():
+    return (
+        "💰 Прайс Seedance 2.0\n\n"
+        "🎥 Текст → Видео / 📷 Изображение → Видео\n"
+        "480p: 5с — 99 ₽ | 10с — 199 ₽ | 15с — 299 ₽\n"
+        "720p: 5с — 209 ₽ | 10с — 419 ₽ | 15с — 629 ₽\n"
+        "1080p: 5с — 429 ₽ | 10с — 849 ₽ | 15с — 1269 ₽\n\n"
+        "🎬 Изображение + Видео → Видео\n"
+        "480p: 5с — 109 ₽ | 10с — 219 ₽ | 15с — 319 ₽\n"
+        "720p: 5с — 229 ₽ | 10с — 459 ₽ | 15с — 689 ₽\n"
+        "1080p: 5с — 469 ₽ | 10с — 929 ₽ | 15с — 1389 ₽\n\n"
+        "4K временно недоступен."
+    )
+
+
+def seedance_price_keyboard():
+    return navigation_keyboard([
+        [InlineKeyboardButton("💳 ПОПОЛНИТЬ БАЛАНС", callback_data="buy_seedance_prices")]
+    ], back_callback="model_seedance_2")
 
 
 def seedance_image_type_menu(back_callback):
@@ -742,7 +764,17 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if action == "model_seedance_2":
         user_states.pop(user_id, None)
-        await chat.send_message("🎬 Seedance 2.0\n\nВыберите режим генерации:", reply_markup=seedance_modes_menu())
+        await chat.send_message(
+            "🎬 Seedance 2.0\n\nОзнакомьтесь с ценами и выберите режим генерации:",
+            reply_markup=seedance_modes_menu()
+        )
+        return
+
+    if action == "seedance_price_list":
+        await chat.send_message(
+            seedance_price_list_text(),
+            reply_markup=seedance_price_keyboard()
+        )
         return
 
     if action in ["model_grok_imagine_15", "model_kling_30_turbo", "model_happyhorse_11", "model_wan_27_video", "model_gemini_omni", "model_hailuo_23", "model_veo_31"]:
@@ -773,7 +805,7 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if action in ["seedance_image_first", "seedance_image_first_last", "seedance_image_reference_pack"]:
         if user_id not in user_states:
-            await chat.send_message("🎬 Seedance 2.0\n\nВыберите режим генерации:", reply_markup=seedance_modes_menu())
+            await chat.send_message("🎬 Seedance 2.0\n\nОзнакомьтесь с ценами и выберите режим генерации:", reply_markup=seedance_modes_menu())
             return
         reset_seedance_files(user_id)
         if action == "seedance_image_first":
@@ -800,7 +832,7 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if action in ["seedance_audio_on", "seedance_audio_off"]:
         if user_id not in user_states:
-            await chat.send_message("🎬 Seedance 2.0\n\nВыберите режим генерации:", reply_markup=seedance_modes_menu())
+            await chat.send_message("🎬 Seedance 2.0\n\nОзнакомьтесь с ценами и выберите режим генерации:", reply_markup=seedance_modes_menu())
             return
         user_states[user_id]["generate_audio"] = action == "seedance_audio_on"
         user_states[user_id]["step"] = "choose_resolution"
@@ -815,7 +847,7 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if action.startswith("seedance_resolution_"):
         if user_id not in user_states:
-            await chat.send_message("🎬 Seedance 2.0\n\nВыберите режим генерации:", reply_markup=seedance_modes_menu())
+            await chat.send_message("🎬 Seedance 2.0\n\nОзнакомьтесь с ценами и выберите режим генерации:", reply_markup=seedance_modes_menu())
             return
         user_states[user_id]["resolution"] = action.replace("seedance_resolution_", "")
         user_states[user_id]["step"] = "choose_aspect"
@@ -830,7 +862,7 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if action.startswith("seedance_aspect_"):
         if user_id not in user_states:
-            await chat.send_message("🎬 Seedance 2.0\n\nВыберите режим генерации:", reply_markup=seedance_modes_menu())
+            await chat.send_message("🎬 Seedance 2.0\n\nОзнакомьтесь с ценами и выберите режим генерации:", reply_markup=seedance_modes_menu())
             return
         user_states[user_id]["aspect_ratio"] = clean_aspect(action)
 
@@ -858,7 +890,7 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if action.startswith("seedance_duration_"):
         if user_id not in user_states:
-            await chat.send_message("🎬 Seedance 2.0\n\nВыберите режим генерации:", reply_markup=seedance_modes_menu())
+            await chat.send_message("🎬 Seedance 2.0\n\nОзнакомьтесь с ценами и выберите режим генерации:", reply_markup=seedance_modes_menu())
             return
         duration = action.replace("seedance_duration_", "")
         video_duration = user_states[user_id].get("video_duration")
@@ -882,7 +914,14 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await handle_seedance_generate(chat, user_id)
         return
 
+    if action == "buy_seedance_prices":
+        user_states[user_id] = {"payment_return": "seedance_modes"}
+        await chat.send_message("💳 Выберите сумму пополнения:", reply_markup=topup_inline_menu(back_callback="seedance_price_list"))
+        return
+
     if action == "buy":
+        if user_states.get(user_id, {}).get("payment_return"):
+            user_states.pop(user_id, None)
         await chat.send_message("💳 Выберите сумму пополнения:", reply_markup=topup_inline_menu())
         return
 
@@ -1043,37 +1082,68 @@ async def handle_seedance_generate(chat, user_id: int):
 
 async def handle_topup(chat, user_id: int, action: str):
     amount = int(action.replace("topup_", ""))
+    payment_return = user_states.get(user_id, {}).get("payment_return", "")
+    return_suffix = "_seedance" if payment_return == "seedance_modes" else ""
+    back_callback = "seedance_price_list" if payment_return == "seedance_modes" else "buy"
+
     payment_url, payment_id = create_yookassa_payment(user_id, amount)
     keyboard = navigation_keyboard([
         [InlineKeyboardButton("💳 Оплатить", url=payment_url)],
-        [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")]
-    ], back_callback="buy")
+        [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}{return_suffix}")]
+    ], back_callback=back_callback)
+
     await chat.send_message(
-        f"💳 Пополнение баланса на {amount} ₽\n\n⚠️ На время оплаты отключите VPN.\n\n1. Нажмите «Оплатить»\n2. После оплаты вернитесь сюда\n3. Нажмите «✅ Проверить оплату»",
+        f"💳 Пополнение баланса на {amount} ₽\n\n"
+        f"⚠️ На время оплаты отключите VPN.\n\n"
+        f"1. Нажмите «Оплатить»\n"
+        f"2. После оплаты вернитесь сюда\n"
+        f"3. Нажмите «✅ Проверить оплату»",
         reply_markup=keyboard
     )
-
 
 async def handle_checkpay(chat, user_id: int, action: str):
     parts = action.split("_")
     payment_id = parts[1]
     amount = int(parts[2])
+    return_to_seedance = len(parts) > 3 and parts[3] == "seedance"
+
     try:
         paid = check_yookassa_payment(payment_id)
     except Exception as e:
         await chat.send_message(f"❌ Не удалось проверить оплату:\n\n{e}", reply_markup=back_to_menu_keyboard())
         return
+
     if not paid:
+        suffix = "_seedance" if return_to_seedance else ""
+        back_callback = "seedance_price_list" if return_to_seedance else "buy"
         await chat.send_message(
             "⏳ Оплата пока не найдена.\n\nЕсли вы уже оплатили — подождите 10–20 секунд и нажмите кнопку ещё раз.",
-            reply_markup=navigation_keyboard([[InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}")]], back_callback="buy")
+            reply_markup=navigation_keyboard(
+                [[InlineKeyboardButton("✅ Проверить оплату", callback_data=f"checkpay_{payment_id}_{amount}{suffix}")]],
+                back_callback=back_callback
+            )
         )
         return
+
     give_balance(user_id, amount)
     apply_deposit_bonus(user_id, amount)
     _, paid_credits = get_user(user_id)
-    await chat.send_message(f"✅ Оплата получена!\n\nБаланс пополнен на {amount} ₽.\nТекущий баланс: {paid_credits} ₽.", reply_markup=back_to_menu_keyboard())
 
+    if return_to_seedance:
+        user_states.pop(user_id, None)
+        await chat.send_message(
+            f"✅ Баланс пополнен на {amount} ₽.\nТекущий баланс: {paid_credits} ₽.",
+            reply_markup=navigation_keyboard(
+                [[InlineKeyboardButton("🎬 Вернуться к выбору режимов", callback_data="model_seedance_2")]],
+                back_callback="main_menu"
+            )
+        )
+        return
+
+    await chat.send_message(
+        f"✅ Оплата получена!\n\nБаланс пополнен на {amount} ₽.\nТекущий баланс: {paid_credits} ₽.",
+        reply_markup=back_to_menu_keyboard()
+    )
 
 # ========================= ФАЙЛЫ И ТЕКСТ =========================
 
