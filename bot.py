@@ -109,7 +109,7 @@ def main_inline_menu():
 
 def topup_inline_menu(back_callback="main_menu"):
     return navigation_keyboard([
-        [InlineKeyboardButton("2500 ₽", callback_data="topup_2500")],
+        [InlineKeyboardButton("250 ₽", callback_data="topup_250")],
         [InlineKeyboardButton("500 ₽", callback_data="topup_500")],
         [InlineKeyboardButton("1000 ₽", callback_data="topup_1000")],
         [InlineKeyboardButton("5000 ₽", callback_data="topup_5000")]
